@@ -1,0 +1,13 @@
+# Core dependencies for Firecrawl Scraper
+# Python 3.7+ required
+
+# HTTP and async requests
+aiohttp>=3.8.0
+requests>=2.28.0
+
+# Environment variable management
+python-dotenv>=0.19.0
+
+# Firecrawl SDK (optional but recommended)
+# Uncomment if you want to use the official SDK as fallback
+# firecrawl-py>=1.0.0
