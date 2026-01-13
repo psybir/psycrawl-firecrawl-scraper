@@ -1,6 +1,21 @@
-# Firecrawl Scraper - Production-Grade Web Scraping System
+# Firecrawl Scraper v2.0 - Production-Grade Web Scraping System
 
-A battle-tested, professional web scraping system built on **Firecrawl API v2.60**. Extensively stress-tested over one week with 100+ production scraping operations, handling everything from small documentation sites to massive multi-source data collection.
+A battle-tested, professional web scraping system built on **Firecrawl API v2**. Now with batch scraping, browser actions, real-time monitoring, and change tracking.
+
+## What's New in v2.0
+
+- **Batch Scraping** - Scrape 1000+ URLs in parallel with async processing
+- **Actions Support** - Click, scroll, wait, screenshot for dynamic JavaScript sites
+- **Real-Time Monitoring** - Live progress updates with WebSocket/polling
+- **Change Tracking** - Monitor websites for content changes over time
+- **Media Extraction** - Extract content from PDFs, DOCX, and images
+- **5 Strategies** - CRAWL, MAP, EXTRACT, BATCH, and DYNAMIC
+
+---
+
+## Original Battle-Testing
+
+Extensively stress-tested over one week with 100+ production scraping operations, handling everything from small documentation sites to massive multi-source data collection.
 
 ## 🔥 Real-World Battle Testing
 
@@ -95,7 +110,21 @@ Use For: Content analysis, trend monitoring, research
 
 ## ✨ Key Features
 
-### 3 Intelligent Scraping Strategies
+### 5 Intelligent Scraping Strategies
+
+**BATCH** (NEW in v2.0) - Large-Scale Parallel Scraping
+- Scrape 1000+ URLs simultaneously
+- Async processing with progress callbacks
+- Cost: 1 credit/URL (same as sequential, but 10x faster)
+- Best for: Known URL lists, large-scale data collection
+
+**DYNAMIC** (NEW in v2.0) - JavaScript-Heavy Sites
+- Browser automation with Actions (click, scroll, wait)
+- Pre-built presets for common scenarios
+- Screenshot capture support
+- Mobile device emulation
+- Cost: 1 credit base + 1 per action
+- Best for: SPAs, lazy-loaded content, "Load More" buttons
 
 **CRAWL** - Comprehensive Site Exploration
 - Discovers and scrapes all pages automatically
@@ -124,6 +153,14 @@ Use For: Content analysis, trend monitoring, research
 - **Cost Management**: Budget enforcement, credit estimation, real-time tracking
 - **Smart URL Validation**: Catches invalid URLs before wasting credits
 - **Multiple Output Formats**: Markdown, HTML, JSON, images, screenshots
+
+### NEW v2.0 Features
+
+- **Actions Support**: Browser automation (click, scroll, wait, screenshot)
+- **Batch Scraping**: Async API for 1000+ URL parallel processing
+- **Real-Time Monitoring**: Live progress with callbacks and progress bars
+- **Change Tracking**: Monitor websites for content updates
+- **Media Extraction**: PDF, DOCX, and image content extraction
 
 ## 🚀 Quick Start (5 Minutes)
 

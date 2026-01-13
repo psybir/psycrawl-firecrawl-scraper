@@ -701,6 +701,232 @@ class UniversalScraper:
         return hashlib.sha256(url.encode()).hexdigest()[:16]
 
 
+# ============================================================================
+# NEW v2.0 STRATEGIES
+# ============================================================================
+
+class BatchStrategy(ScrapingStrategy):
+    """
+    Strategy for large-scale batch scraping using v2 batch endpoint.
+
+    Best for:
+    - Scraping 100+ URLs at once
+    - Known URL lists (no discovery needed)
+    - Maximum throughput
+
+    Cost: 1 credit per URL (processed in parallel)
+    """
+
+    async def execute(self, source: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute batch scraping of multiple URLs"""
+        urls = source.get('urls', [])
+        if not urls:
+            # If single URL provided, wrap it
+            if source.get('url'):
+                urls = [source['url']]
+            else:
+                return {
+                    'success': False,
+                    'strategy': 'batch',
+                    'error': 'No URLs provided for batch scraping'
+                }
+
+        self.logger.info(f"🚀 BATCH strategy: {len(urls)} URLs")
+
+        # Progress tracking
+        def on_progress(completed: int, total: int):
+            self.logger.info(f"📊 Batch progress: {completed}/{total}")
+
+        try:
+            result = await self.client.batch_scrape(
+                urls=urls,
+                formats=['markdown', 'html', 'links'],
+                only_main_content=True,
+                on_progress=on_progress
+            )
+
+            if result.get('success'):
+                data = result.get('data', [])
+                total_content = sum(
+                    len(page.get('markdown', '')) if isinstance(page, dict)
+                    else len(str(page)) for page in data
+                )
+
+                return {
+                    'success': True,
+                    'strategy': 'batch',
+                    'urls_requested': len(urls),
+                    'urls_scraped': len(data),
+                    'total_chars': total_content,
+                    'data': data,
+                    'credits_used': result.get('creditsUsed', len(urls))
+                }
+            else:
+                return {
+                    'success': False,
+                    'strategy': 'batch',
+                    'error': result.get('error', 'Unknown error')
+                }
+
+        except Exception as e:
+            self.logger.error(f"❌ BATCH failed: {e}")
+            return {
+                'success': False,
+                'strategy': 'batch',
+                'error': str(e)
+            }
+
+
+class DynamicScrapeStrategy(ScrapingStrategy):
+    """
+    Strategy for JavaScript-heavy dynamic websites using Actions.
+
+    Best for:
+    - Single-page applications (SPAs)
+    - Sites with lazy-loaded content
+    - Sites requiring user interaction
+    - Sites with "Load More" buttons
+    - Infinite scroll pages
+
+    Features:
+    - Browser automation (click, scroll, wait)
+    - Cookie consent dismissal
+    - Dynamic content loading
+    - Screenshot capture
+
+    Cost: 1 credit base + 1 per action
+    """
+
+    # Pre-built action sequences
+    ACTION_PRESETS = {
+        'infinite_scroll': [
+            {"type": "wait", "milliseconds": 1000},
+            {"type": "scroll", "direction": "down", "amount": 1000},
+            {"type": "wait", "milliseconds": 1500},
+            {"type": "scroll", "direction": "down", "amount": 1000},
+            {"type": "wait", "milliseconds": 1500},
+            {"type": "scroll", "direction": "down", "amount": 1000},
+            {"type": "wait", "milliseconds": 1500},
+            {"type": "scroll", "direction": "down", "amount": 1000},
+            {"type": "wait", "milliseconds": 1500},
+            {"type": "scroll", "direction": "down", "amount": 1000},
+        ],
+        'load_more_3x': [
+            {"type": "wait", "milliseconds": 2000},
+            {"type": "click", "selector": "button.load-more, .load-more-btn, [data-action='load-more']"},
+            {"type": "wait", "milliseconds": 2000},
+            {"type": "click", "selector": "button.load-more, .load-more-btn, [data-action='load-more']"},
+            {"type": "wait", "milliseconds": 2000},
+            {"type": "click", "selector": "button.load-more, .load-more-btn, [data-action='load-more']"},
+        ],
+        'accept_cookies': [
+            {"type": "wait", "milliseconds": 1000},
+            {"type": "click", "selector": "[data-testid='cookie-accept'], #accept-cookies, .cookie-accept, button[contains(text(), 'Accept')]"},
+        ],
+        'wait_for_content': [
+            {"type": "wait", "milliseconds": 5000},
+        ]
+    }
+
+    async def execute(self, source: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute dynamic scraping with actions"""
+        url = source['url']
+        self.logger.info(f"⚡ DYNAMIC strategy: {url}")
+
+        # Build actions list
+        actions = source.get('actions', [])
+
+        # Apply preset if specified
+        preset = source.get('action_preset')
+        if preset and preset in self.ACTION_PRESETS:
+            actions = self.ACTION_PRESETS[preset] + actions
+            self.logger.info(f"📋 Using preset: {preset}")
+
+        # Always start with a wait for page load
+        if not actions:
+            actions = [{"type": "wait", "milliseconds": 2000}]
+
+        # Add cookie dismissal if requested
+        if source.get('dismiss_cookies', False):
+            actions = self.ACTION_PRESETS['accept_cookies'] + actions
+
+        # Add screenshot if requested
+        if source.get('take_screenshot', False):
+            actions.append({"type": "screenshot", "fullPage": True})
+
+        self.logger.info(f"🎯 Executing {len(actions)} actions")
+
+        try:
+            result = await self.client.scrape(
+                url=url,
+                formats=['markdown', 'html', 'links'] + (['screenshot'] if source.get('take_screenshot') else []),
+                only_main_content=True,
+                actions=actions,
+                timeout=source.get('timeout', 60000),
+                mobile=source.get('mobile', False)
+            )
+
+            if result.get('success'):
+                data = result.get('data', {})
+
+                # Handle Pydantic model or dict
+                if hasattr(data, 'markdown'):
+                    markdown = data.markdown or ''
+                    html = getattr(data, 'html', '')
+                    screenshot = getattr(data, 'screenshot', None)
+                elif isinstance(data, dict):
+                    markdown = data.get('markdown', '')
+                    html = data.get('html', '')
+                    screenshot = data.get('screenshot')
+                else:
+                    markdown = str(data)
+                    html = ''
+                    screenshot = None
+
+                return {
+                    'success': True,
+                    'strategy': 'dynamic',
+                    'actions_executed': len(actions),
+                    'total_chars': len(markdown),
+                    'has_screenshot': screenshot is not None,
+                    'data': [{
+                        'markdown': markdown,
+                        'html': html,
+                        'screenshot': screenshot
+                    }],
+                    'credits_used': result.get('creditsUsed', 1 + len(actions))
+                }
+            else:
+                return {
+                    'success': False,
+                    'strategy': 'dynamic',
+                    'error': result.get('error', 'Unknown error')
+                }
+
+        except Exception as e:
+            self.logger.error(f"❌ DYNAMIC failed for {url}: {e}")
+            return {
+                'success': False,
+                'strategy': 'dynamic',
+                'error': str(e)
+            }
+
+
+# Add new strategies to UniversalScraper
+# Monkey-patch to add strategies without rewriting entire class
+_original_init = UniversalScraper.__init__
+
+
+def _patched_init(self, api_key: str, output_dir: str = '/Volumes/Samsung 990 Pro/WordPress AI/wordpress-ai-factory/data/scraping-runs'):
+    _original_init(self, api_key, output_dir)
+    # Add new strategies
+    self.strategies['batch'] = BatchStrategy(self.client)
+    self.strategies['dynamic'] = DynamicScrapeStrategy(self.client)
+
+
+UniversalScraper.__init__ = _patched_init
+
+
 async def main():
     """Example usage of Universal Scraper"""
     import os

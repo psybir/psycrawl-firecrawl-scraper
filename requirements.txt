@@ -1,5 +1,8 @@
-# Core dependencies for Firecrawl Scraper
-# Python 3.7+ required
+# Core dependencies for Firecrawl Scraper v2.0
+# Python 3.8+ required
+
+# Firecrawl SDK (v4.x with API v2 support)
+firecrawl-py>=4.0.0
 
 # HTTP and async requests
 aiohttp>=3.8.0
@@ -8,6 +11,20 @@ requests>=2.28.0
 # Environment variable management
 python-dotenv>=0.19.0
 
-# Firecrawl SDK (optional but recommended)
-# Uncomment if you want to use the official SDK as fallback
-# firecrawl-py>=1.0.0
+# Schema validation for LLM extraction
+pydantic>=2.0.0
+
+# WebSocket support for real-time monitoring
+websockets>=11.0
+
+# Progress bar for CLI feedback
+tqdm>=4.64.0
+
+# Content diffing for change tracking
+diff-match-patch>=20230430
+
+# Optional: Media extraction dependencies
+# Uncomment if using media extraction features
+# pypdf>=3.0.0  # PDF parsing
+# python-docx>=0.8.11  # DOCX parsing
+# pillow>=9.0.0  # Image processing

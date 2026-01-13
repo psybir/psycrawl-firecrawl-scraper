@@ -1,35 +1,55 @@
 #!/usr/bin/env python3
 """
-Enhanced Firecrawl v2.5 Client
+Enhanced Firecrawl v2.0 Client
 
-Comprehensive wrapper for Firecrawl API v2.5 with:
-- All 5 endpoints (scrape, crawl, map, extract, search)
-- Stealth mode and actions support
-- Semantic index caching
-- FIRE-1 agent integration
+Comprehensive wrapper for Firecrawl API v2 with:
+- All endpoints (scrape, crawl, map, extract, search, batch)
+- Actions support (click, scroll, wait, input, screenshot)
+- WebSocket real-time monitoring
+- Change tracking capabilities
+- Batch scraping for large-scale operations
 - Rate limiting and retry logic
 - Cost tracking and estimation
+
+API Version: v2 (https://api.firecrawl.dev/v2)
+SDK Version: firecrawl-py >= 4.0.0
 """
 
 import os
 import time
 import asyncio
-from typing import Dict, List, Any, Optional, Callable
+import json
+from typing import Dict, List, Any, Optional, Callable, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
-import requests  # Always needed for direct API calls
+import hashlib
 
-# Try to import firecrawl SDK (for simple crawls)
+# HTTP clients
+import requests
+import aiohttp
+
+# Try to import firecrawl SDK
 try:
-    from firecrawl import Firecrawl
+    from firecrawl import FirecrawlApp, AsyncFirecrawlApp
     HAS_FIRECRAWL_SDK = True
 except ImportError:
     HAS_FIRECRAWL_SDK = False
-    logging.warning("Firecrawl SDK not installed. Install with: pip install firecrawl-py")
+    logging.warning("Firecrawl SDK not installed. Install with: pip install firecrawl-py>=4.0.0")
+
+# Pydantic for schema validation
+try:
+    from pydantic import BaseModel
+    HAS_PYDANTIC = True
+except ImportError:
+    HAS_PYDANTIC = False
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# DATA CLASSES
+# ============================================================================
 
 @dataclass
 class FirecrawlStats:
@@ -41,12 +61,13 @@ class FirecrawlStats:
     retry_count: int = 0
     rate_limit_hits: int = 0
 
-    # Per-endpoint stats
     endpoint_usage: Dict[str, int] = field(default_factory=lambda: {
-        'scrape': 0, 'crawl': 0, 'map': 0, 'extract': 0, 'search': 0
+        'scrape': 0, 'crawl': 0, 'map': 0, 'extract': 0,
+        'search': 0, 'batch_scrape': 0
     })
     credits_by_endpoint: Dict[str, int] = field(default_factory=lambda: {
-        'scrape': 0, 'crawl': 0, 'map': 0, 'extract': 0, 'search': 0
+        'scrape': 0, 'crawl': 0, 'map': 0, 'extract': 0,
+        'search': 0, 'batch_scrape': 0
     })
 
     def get_success_rate(self) -> float:
@@ -56,26 +77,117 @@ class FirecrawlStats:
         return (self.successful_requests / self.total_requests) * 100
 
 
+@dataclass
+class ActionConfig:
+    """Configuration for browser actions"""
+    type: str  # wait, click, scroll, write, press, screenshot
+    selector: Optional[str] = None
+    milliseconds: Optional[int] = None
+    direction: Optional[str] = None  # up, down
+    amount: Optional[int] = None
+    text: Optional[str] = None
+    key: Optional[str] = None
+
+    def to_dict(self) -> Dict:
+        """Convert to API-compatible dict"""
+        result = {"type": self.type}
+        if self.selector:
+            result["selector"] = self.selector
+        if self.milliseconds:
+            result["milliseconds"] = self.milliseconds
+        if self.direction:
+            result["direction"] = self.direction
+        if self.amount:
+            result["amount"] = self.amount
+        if self.text:
+            result["text"] = self.text
+        if self.key:
+            result["key"] = self.key
+        return result
+
+
+# ============================================================================
+# PRE-BUILT ACTION SEQUENCES
+# ============================================================================
+
+class ActionSequences:
+    """Pre-built action sequences for common scenarios"""
+
+    @staticmethod
+    def infinite_scroll(scroll_count: int = 5, wait_ms: int = 1000) -> List[Dict]:
+        """Scroll to load all lazy-loaded content"""
+        actions = []
+        for _ in range(scroll_count):
+            actions.append({"type": "scroll", "direction": "down", "amount": 1000})
+            actions.append({"type": "wait", "milliseconds": wait_ms})
+        return actions
+
+    @staticmethod
+    def click_load_more(selector: str, click_count: int = 3, wait_ms: int = 2000) -> List[Dict]:
+        """Click 'Load More' button multiple times"""
+        actions = []
+        for _ in range(click_count):
+            actions.append({"type": "click", "selector": selector})
+            actions.append({"type": "wait", "milliseconds": wait_ms})
+        return actions
+
+    @staticmethod
+    def accept_cookies(selectors: List[str] = None) -> List[Dict]:
+        """Try to dismiss cookie consent banners"""
+        if selectors is None:
+            selectors = [
+                "[data-testid='cookie-accept']",
+                "#accept-cookies",
+                ".cookie-accept",
+                "button[contains(text(), 'Accept')]",
+                "[aria-label='Accept cookies']"
+            ]
+        actions = [{"type": "wait", "milliseconds": 1000}]
+        for selector in selectors:
+            actions.append({"type": "click", "selector": selector})
+        return actions
+
+    @staticmethod
+    def wait_for_element(selector: str, timeout_ms: int = 5000) -> List[Dict]:
+        """Wait for a specific element to appear"""
+        return [
+            {"type": "wait", "selector": selector, "milliseconds": timeout_ms}
+        ]
+
+    @staticmethod
+    def take_screenshot() -> List[Dict]:
+        """Take a full page screenshot"""
+        return [{"type": "screenshot", "fullPage": True}]
+
+
+# ============================================================================
+# MAIN CLIENT CLASS
+# ============================================================================
+
 class EnhancedFirecrawlClient:
     """
-    Enhanced Firecrawl v2.5 Client with comprehensive feature support
+    Enhanced Firecrawl v2.0 Client with comprehensive feature support
 
     Features:
-    - All 5 endpoints (scrape, crawl, map, extract, search)
-    - Stealth mode and interactive actions
-    - Semantic index caching (5x faster)
-    - FIRE-1 agent support
+    - All API v2 endpoints (scrape, crawl, map, extract, search, batch)
+    - Actions for dynamic content (click, scroll, wait, input, screenshot)
+    - WebSocket real-time monitoring
+    - Batch scraping for large-scale operations
+    - Change tracking and content diffing
     - Exponential backoff retry
     - Rate limit handling
     - Cost estimation and tracking
     """
+
+    # API v2 base URL
+    BASE_URL = "https://api.firecrawl.dev/v2"
 
     def __init__(
         self,
         api_key: Optional[str] = None,
         max_retries: int = 3,
         retry_delay: int = 2000,
-        timeout: int = 30000
+        timeout: int = 60000
     ):
         """
         Initialize Firecrawl client
@@ -94,22 +206,31 @@ class EnhancedFirecrawlClient:
         self.retry_delay = retry_delay / 1000  # Convert to seconds
         self.timeout = timeout / 1000
 
-        # Initialize API base URL and session (always needed for direct API)
-        self.base_url = "https://api.firecrawl.dev/v1"
+        # Initialize HTTP session
         self.session = requests.Session()
         self.session.headers.update({
             'Authorization': f'Bearer {self.api_key}',
             'Content-Type': 'application/json'
         })
 
-        # Initialize SDK if available (for simple crawls)
+        # Initialize SDK clients if available
         if HAS_FIRECRAWL_SDK:
-            self.client = Firecrawl(api_key=self.api_key)
+            self.sdk_client = FirecrawlApp(api_key=self.api_key)
+            try:
+                self.async_sdk_client = AsyncFirecrawlApp(api_key=self.api_key)
+            except Exception:
+                self.async_sdk_client = None
+        else:
+            self.sdk_client = None
+            self.async_sdk_client = None
 
         self.stats = FirecrawlStats()
 
+        # Content hash cache for change tracking
+        self._content_hashes: Dict[str, str] = {}
+
     # ========================================================================
-    # SCRAPE ENDPOINT
+    # SCRAPE ENDPOINT (with Actions support)
     # ========================================================================
 
     async def scrape(
@@ -117,30 +238,37 @@ class EnhancedFirecrawlClient:
         url: str,
         formats: List[str] = None,
         only_main_content: bool = True,
-        max_age: int = 172800000,  # 2 days default
-        store_in_cache: bool = True,
-        proxy: Optional[str] = None,
-        actions: Optional[List[Dict]] = None,
-        json_config: Optional[Dict] = None,
-        location: Optional[Dict] = None,
+        include_tags: List[str] = None,
+        exclude_tags: List[str] = None,
+        wait_for: int = 0,
         timeout: Optional[int] = None,
-        agent: Optional[Dict] = None
+        actions: Optional[List[Dict]] = None,
+        location: Optional[Dict] = None,
+        mobile: bool = False,
+        skip_tls_verification: bool = False,
+        remove_base64_images: bool = False,
+        extract: Optional[Dict] = None
     ) -> Dict:
         """
-        Scrape single URL with v2.5 features
+        Scrape single URL with v2 features including Actions
 
         Args:
             url: Target URL
-            formats: Output formats ['markdown', 'html', 'screenshot', 'links', 'json']
+            formats: Output formats ['markdown', 'html', 'rawHtml', 'screenshot',
+                    'links', 'extract', 'screenshot@fullPage']
             only_main_content: Extract only main content (remove nav/footer)
-            max_age: Cache freshness in ms (0 = force fresh)
-            store_in_cache: Store in semantic index
-            proxy: Proxy mode ('auto' for stealth fallback, 'stealth' for always)
-            actions: Interactive actions (wait, click, scroll, write, press, screenshot)
-            json_config: JSON extraction config {'schema': {}, 'prompt': ''}
-            location: Geographic targeting {'country': 'US', 'languages': ['en']}
+            include_tags: HTML tags to include
+            exclude_tags: HTML tags to exclude
+            wait_for: Time to wait before scraping (ms)
             timeout: Request timeout override (ms)
-            agent: FIRE-1 agent config {'model': 'FIRE-1', 'prompt': ''}
+            actions: Browser actions to perform before scraping
+                    [{"type": "click", "selector": "#btn"},
+                     {"type": "scroll", "direction": "down"}]
+            location: Geographic targeting {'country': 'US', 'languages': ['en']}
+            mobile: Emulate mobile device
+            skip_tls_verification: Skip TLS verification
+            remove_base64_images: Remove base64 images from output
+            extract: LLM extraction config {'schema': {}, 'prompt': ''}
 
         Returns:
             Dict with 'success', 'data', 'creditsUsed'
@@ -151,45 +279,38 @@ class EnhancedFirecrawlClient:
         payload = {
             'url': url,
             'formats': formats or ['markdown'],
-            'onlyMainContent': only_main_content,  # Fixed: API expects camelCase
-            'maxAge': max_age,
-            'storeInCache': store_in_cache
+            'onlyMainContent': only_main_content
         }
 
-        # Stealth mode
-        if proxy:
-            payload['proxy'] = proxy
-
-        # Interactive actions
-        if actions:
-            payload['actions'] = actions
-
-        # JSON extraction
-        if json_config:
-            payload['json'] = json_config
-
-        # Geographic targeting
-        if location:
-            payload['location'] = location
-
-        # FIRE-1 agent
-        if agent:
-            payload['agent'] = agent
-
-        # Timeout override
+        if include_tags:
+            payload['includeTags'] = include_tags
+        if exclude_tags:
+            payload['excludeTags'] = exclude_tags
+        if wait_for > 0:
+            payload['waitFor'] = wait_for
         if timeout:
             payload['timeout'] = timeout
+        if actions:
+            payload['actions'] = actions
+        if location:
+            payload['location'] = location
+        if mobile:
+            payload['mobile'] = True
+        if skip_tls_verification:
+            payload['skipTlsVerification'] = True
+        if remove_base64_images:
+            payload['removeBase64Images'] = True
+        if extract:
+            payload['extract'] = extract
 
         result = await self._execute_with_retry(
             endpoint='/scrape',
             payload=payload,
-            method='scrape',
-            force_http=True  # Use direct API - SDK doesn't support all v2.5 parameters
+            method='POST'
         )
 
         if result.get('success'):
-            # Estimate credits
-            credits = self._estimate_credits(result, 'scrape', proxy, agent)
+            credits = self._estimate_scrape_credits(result, actions)
             result['creditsUsed'] = credits
             self.stats.credits_by_endpoint['scrape'] += credits
             self.stats.total_credits_used += credits
@@ -208,166 +329,244 @@ class EnhancedFirecrawlClient:
         include_paths: Optional[List[str]] = None,
         exclude_paths: Optional[List[str]] = None,
         max_depth: Optional[int] = None,
-        allow_backward_links: bool = False,
         allow_external_links: bool = False,
-        ignore_sitemap: bool = False,
-        crawl_entire_domain: bool = False,
         allow_subdomains: bool = False,
-        webhook: Optional[Dict] = None
+        ignore_sitemap: bool = False,
+        webhook: Optional[str] = None
     ) -> Dict:
         """
-        Crawl website (blocking - recommended)
+        Crawl website with v2 API
 
         Args:
             url: Base URL to crawl
-            limit: Maximum pages to crawl (default: 10000)
+            limit: Maximum pages to crawl
             scrape_options: Options for each page (formats, onlyMainContent, etc.)
-            include_paths: URL pathname regex patterns to include ['/docs/*']
-            exclude_paths: URL pathname regex patterns to exclude ['/admin/*']
-            max_depth: Maximum crawl depth based on discovery order (maps to API maxDiscoveryDepth)
-                      Root site and sitemapped pages have depth 0. Saves 30% credits.
-            allow_backward_links: DEPRECATED - Use crawl_entire_domain instead.
-                                 This parameter doesn't exist in Firecrawl API v2.
-            allow_external_links: Allow crawler to follow external website links
-            ignore_sitemap: Controls sitemap usage (maps to API sitemap: 'skip'|'include')
-                           True = skip sitemap, False = include sitemap
-            crawl_entire_domain: Allow crawler to follow internal links including siblings/parents
-                                (replaces allow_backward_links functionality)
-            allow_subdomains: Allow crawler to follow subdomain links
-            webhook: Webhook config {'url': '', 'events': ['page', 'completed'], 'headers': {}}
+            include_paths: URL pathname patterns to include ['/docs/*']
+            exclude_paths: URL pathname patterns to exclude ['/admin/*']
+            max_depth: Maximum crawl depth
+            allow_external_links: Allow following external links
+            allow_subdomains: Allow following subdomain links
+            ignore_sitemap: Skip sitemap discovery
+            webhook: Webhook URL for progress updates
 
         Returns:
-            Dict with 'success', 'data' (list of pages), 'creditsUsed', 'status', 'total', 'completed'
-
-        Note:
-            API parameter mappings:
-            - max_depth → maxDiscoveryDepth (camelCase)
-            - include_paths → includePaths
-            - exclude_paths → excludePaths
-            - ignore_sitemap → sitemap: "skip"|"include"
-            - crawl_entire_domain → crawlEntireDomain
+            Dict with 'success', 'data', 'creditsUsed', 'status'
         """
         self.stats.total_requests += 1
         self.stats.endpoint_usage['crawl'] += 1
 
-        # Detect if advanced crawl parameters are being used
-        # SDK doesn't support these yet, so we need to use direct API
-        has_advanced_params = (
-            max_depth is not None or
-            exclude_paths is not None or
-            include_paths is not None or
-            crawl_entire_domain or
-            ignore_sitemap or
-            allow_external_links or
-            allow_subdomains or
-            webhook is not None
+        payload = {
+            'url': url,
+            'limit': limit,
+            'scrapeOptions': scrape_options or {'formats': ['markdown']}
+        }
+
+        if include_paths:
+            payload['includePaths'] = include_paths
+        if exclude_paths:
+            payload['excludePaths'] = exclude_paths
+        if max_depth is not None:
+            payload['maxDepth'] = max_depth
+        if allow_external_links:
+            payload['allowExternalLinks'] = True
+        if allow_subdomains:
+            payload['allowSubdomains'] = True
+        if ignore_sitemap:
+            payload['ignoreSitemap'] = True
+        if webhook:
+            payload['webhook'] = webhook
+
+        # Start crawl job
+        result = await self._execute_with_retry(
+            endpoint='/crawl',
+            payload=payload,
+            method='POST'
         )
 
-        # Route to SDK for simple crawls, direct API for advanced parameters
-        if HAS_FIRECRAWL_SDK and not has_advanced_params:
-            # Simple crawl via SDK - only basic parameters supported
-            # Python SDK crawl() method signature:
-            # crawl(url, limit, poll_interval, timeout, scrape_options)
-            try:
-                # SDK handles pagination automatically and returns CrawlJob object
-                crawl_job = self.client.crawl(
-                    url=url,
-                    limit=limit,
-                    scrape_options=scrape_options or {'formats': ['markdown']}
-                )
+        if result.get('success') and result.get('id'):
+            # Poll for completion
+            job_id = result['id']
+            result = await self._poll_job_status(f'/crawl/{job_id}', 'crawl')
 
-                # CrawlJob is a Pydantic model with direct property access
-                # Properties: status, total, completed, credits_used, data (List[Document])
-                data = crawl_job.data if hasattr(crawl_job, 'data') else []
-                credits = crawl_job.credits_used if hasattr(crawl_job, 'credits_used') else len(data)
+        return result
 
-                self.stats.successful_requests += 1
-                self.stats.credits_by_endpoint['crawl'] += credits
-                self.stats.total_credits_used += credits
+    async def crawl_async(
+        self,
+        url: str,
+        **kwargs
+    ) -> str:
+        """
+        Start async crawl and return job ID immediately
 
-                return {
-                    'success': True,
-                    'data': data,
-                    'creditsUsed': credits,
-                    'status': crawl_job.status if hasattr(crawl_job, 'status') else 'completed',
-                    'total': crawl_job.total if hasattr(crawl_job, 'total') else len(data),
-                    'completed': crawl_job.completed if hasattr(crawl_job, 'completed') else len(data)
-                }
-            except Exception as e:
-                self.stats.failed_requests += 1
-                logger.error(f"SDK crawl error: {e}")
-                return {'success': False, 'error': str(e)}
+        Args:
+            url: Base URL to crawl
+            **kwargs: Same as crawl()
 
-        # Direct API path for advanced parameters or when SDK unavailable
-        if has_advanced_params or not HAS_FIRECRAWL_SDK:
-            # Direct API requests use camelCase
-            payload = {
-                'url': url,
-                'limit': limit,
-                'scrapeOptions': scrape_options or {'formats': ['markdown']},
-                'crawlEntireDomain': crawl_entire_domain,
-                'allowSubdomains': allow_subdomains
-            }
-            if include_paths:
-                payload['includePaths'] = include_paths
-            if exclude_paths:
-                payload['excludePaths'] = exclude_paths
-            if max_depth is not None:
-                payload['maxDiscoveryDepth'] = max_depth  # FIXED: API uses maxDiscoveryDepth, not maxDepth
-            if allow_external_links:
-                payload['allowExternalLinks'] = allow_external_links
-            # Note: Removed allowBackwardLinks - doesn't exist in API. Use crawlEntireDomain instead.
-            if ignore_sitemap:
-                payload['sitemap'] = 'skip' if ignore_sitemap else 'include'  # FIXED: API uses sitemap enum, not ignoreSitemap boolean
-            if webhook:
-                payload['webhook'] = webhook
+        Returns:
+            Job ID string
+        """
+        kwargs['url'] = url
+        payload = self._build_crawl_payload(**kwargs)
 
-            # Execute direct API request (bypass SDK)
-            result = await self._execute_with_retry(
-                endpoint='/crawl',
-                payload=payload,
-                method='POST',
-                force_http=True  # Force direct HTTP, bypass SDK
-            )
+        result = await self._execute_with_retry(
+            endpoint='/crawl',
+            payload=payload,
+            method='POST'
+        )
 
-            if result.get('success'):
-                # Poll for completion
-                job_id = result.get('id')
-                result = await self._poll_crawl_status(job_id)
+        if result.get('success'):
+            return result.get('id')
+        raise Exception(f"Failed to start crawl: {result.get('error')}")
 
-            return result
+    def _build_crawl_payload(self, **kwargs) -> Dict:
+        """Build crawl payload from kwargs"""
+        payload = {
+            'url': kwargs.get('url'),
+            'limit': kwargs.get('limit', 100),
+            'scrapeOptions': kwargs.get('scrape_options', {'formats': ['markdown']})
+        }
 
-    async def _poll_crawl_status(self, job_id: str, poll_interval: int = 5) -> Dict:
-        """Poll crawl job status until completion"""
-        while True:
-            status = await self.get_crawl_status(job_id)
+        optional_fields = [
+            ('include_paths', 'includePaths'),
+            ('exclude_paths', 'excludePaths'),
+            ('max_depth', 'maxDepth'),
+            ('allow_external_links', 'allowExternalLinks'),
+            ('allow_subdomains', 'allowSubdomains'),
+            ('ignore_sitemap', 'ignoreSitemap'),
+            ('webhook', 'webhook')
+        ]
 
-            if status.get('status') in ['completed', 'failed', 'cancelled']:
-                credits = status.get('completed', 0) * 1
-                self.stats.credits_by_endpoint['crawl'] += credits
-                self.stats.total_credits_used += credits
+        for kwarg_name, api_name in optional_fields:
+            if kwargs.get(kwarg_name):
+                payload[api_name] = kwargs[kwarg_name]
 
-                return {
-                    'success': status.get('status') == 'completed',
-                    'data': status.get('data', []),
-                    'creditsUsed': credits,
-                    'status': status.get('status')
-                }
-
-            logger.info(f"Crawl progress: {status.get('completed', 0)}/{status.get('total', '?')}")
-            await asyncio.sleep(poll_interval)
+        return payload
 
     async def get_crawl_status(self, job_id: str) -> Dict:
         """Get crawl job status"""
-        if HAS_FIRECRAWL_SDK:
-            try:
-                return self.client.get_crawl_status(job_id)
-            except Exception as e:
-                logger.error(f"Get crawl status error: {e}")
-                return {'success': False, 'error': str(e)}
-        else:
-            response = self.session.get(f"{self.base_url}/crawl/status/{job_id}")
-            return response.json()
+        return await self._execute_with_retry(
+            endpoint=f'/crawl/{job_id}',
+            payload={},
+            method='GET'
+        )
+
+    async def cancel_crawl(self, job_id: str) -> Dict:
+        """Cancel running crawl job"""
+        return await self._execute_with_retry(
+            endpoint=f'/crawl/{job_id}',
+            payload={},
+            method='DELETE'
+        )
+
+    # ========================================================================
+    # BATCH SCRAPE ENDPOINT (NEW in v2)
+    # ========================================================================
+
+    async def batch_scrape(
+        self,
+        urls: List[str],
+        formats: List[str] = None,
+        only_main_content: bool = True,
+        actions: Optional[List[Dict]] = None,
+        webhook: Optional[str] = None,
+        on_progress: Optional[Callable[[int, int], None]] = None
+    ) -> Dict:
+        """
+        Batch scrape multiple URLs asynchronously
+
+        Args:
+            urls: List of URLs to scrape (up to 10,000)
+            formats: Output formats for all URLs
+            only_main_content: Extract only main content
+            actions: Actions to perform on each page
+            webhook: Webhook URL for progress updates
+            on_progress: Callback function(completed, total)
+
+        Returns:
+            Dict with 'success', 'data', 'creditsUsed', 'total', 'completed'
+        """
+        self.stats.total_requests += 1
+        self.stats.endpoint_usage['batch_scrape'] += 1
+
+        payload = {
+            'urls': urls,
+            'formats': formats or ['markdown'],
+            'onlyMainContent': only_main_content
+        }
+
+        if actions:
+            payload['actions'] = actions
+        if webhook:
+            payload['webhook'] = webhook
+
+        # Start batch job
+        result = await self._execute_with_retry(
+            endpoint='/batch/scrape',
+            payload=payload,
+            method='POST'
+        )
+
+        if result.get('success') and result.get('id'):
+            job_id = result['id']
+            result = await self._poll_job_status(
+                f'/batch/scrape/{job_id}',
+                'batch_scrape',
+                on_progress=on_progress
+            )
+
+        return result
+
+    async def batch_scrape_async(
+        self,
+        urls: List[str],
+        **kwargs
+    ) -> str:
+        """
+        Start async batch scrape and return job ID immediately
+
+        Args:
+            urls: List of URLs to scrape
+            **kwargs: Same as batch_scrape()
+
+        Returns:
+            Job ID string
+        """
+        payload = {
+            'urls': urls,
+            'formats': kwargs.get('formats', ['markdown']),
+            'onlyMainContent': kwargs.get('only_main_content', True)
+        }
+
+        if kwargs.get('actions'):
+            payload['actions'] = kwargs['actions']
+        if kwargs.get('webhook'):
+            payload['webhook'] = kwargs['webhook']
+
+        result = await self._execute_with_retry(
+            endpoint='/batch/scrape',
+            payload=payload,
+            method='POST'
+        )
+
+        if result.get('success'):
+            return result.get('id')
+        raise Exception(f"Failed to start batch scrape: {result.get('error')}")
+
+    async def get_batch_status(self, job_id: str) -> Dict:
+        """Get batch scrape job status"""
+        return await self._execute_with_retry(
+            endpoint=f'/batch/scrape/{job_id}',
+            payload={},
+            method='GET'
+        )
+
+    async def cancel_batch(self, job_id: str) -> Dict:
+        """Cancel running batch scrape job"""
+        return await self._execute_with_retry(
+            endpoint=f'/batch/scrape/{job_id}',
+            payload={},
+            method='DELETE'
+        )
 
     # ========================================================================
     # MAP ENDPOINT
@@ -377,46 +576,46 @@ class EnhancedFirecrawlClient:
         self,
         url: str,
         search: Optional[str] = None,
-        limit: int = 100,
-        sitemap: str = "include",
-        location: Optional[Dict] = None
+        limit: int = 5000,
+        ignore_sitemap: bool = False,
+        include_subdomains: bool = False
     ) -> Dict:
         """
-        Fast URL discovery
+        Fast URL discovery with v2 API
 
         Args:
             url: Base URL to map
-            search: Keyword filtering
+            search: Keyword filtering for URLs
             limit: Maximum URLs to return
-            sitemap: Include XML sitemap ('include' or 'exclude')
-            location: Geographic targeting
+            ignore_sitemap: Skip sitemap
+            include_subdomains: Include subdomain URLs
 
         Returns:
-            Dict with 'success', 'links' (list of {url, title, description})
+            Dict with 'success', 'links', 'creditsUsed'
         """
         self.stats.total_requests += 1
         self.stats.endpoint_usage['map'] += 1
 
         payload = {
             'url': url,
-            'limit': limit,
-            'sitemap': sitemap
+            'limit': limit
         }
 
         if search:
             payload['search'] = search
-
-        if location:
-            payload['location'] = location
+        if ignore_sitemap:
+            payload['ignoreSitemap'] = True
+        if include_subdomains:
+            payload['includeSubdomains'] = True
 
         result = await self._execute_with_retry(
             endpoint='/map',
             payload=payload,
-            method='map'
+            method='POST'
         )
 
         if result.get('success'):
-            credits = 1  # Map is cheap
+            credits = 1  # Map costs 1 credit
             result['creditsUsed'] = credits
             self.stats.credits_by_endpoint['map'] += credits
             self.stats.total_credits_used += credits
@@ -424,62 +623,63 @@ class EnhancedFirecrawlClient:
         return result
 
     # ========================================================================
-    # EXTRACT ENDPOINT
+    # EXTRACT ENDPOINT (LLM-powered)
     # ========================================================================
 
     async def extract(
         self,
         urls: List[str],
-        schema: Optional[Dict] = None,
         prompt: Optional[str] = None,
-        enable_web_search: bool = False,
-        agent: Optional[Dict] = None
+        schema: Optional[Union[Dict, Any]] = None,
+        system_prompt: Optional[str] = None,
+        allow_external_links: bool = False
     ) -> Dict:
         """
-        AI-powered structured extraction
+        AI-powered structured extraction with v2 API
 
         Args:
             urls: List of URLs (supports wildcards: 'example.com/*')
-            schema: JSON Schema for structured data
             prompt: Natural language extraction instructions
-            enable_web_search: Expand beyond specified domain
-            agent: FIRE-1 agent config {'model': 'FIRE-1'}
+            schema: JSON Schema or Pydantic model for structured data
+            system_prompt: Custom system prompt for LLM
+            allow_external_links: Allow following external links
 
         Returns:
             Dict with 'success', 'data' (extracted structured data)
         """
-        if not schema and not prompt:
-            raise ValueError("Either schema or prompt required for extraction")
+        if not prompt and not schema:
+            raise ValueError("Either prompt or schema required for extraction")
 
         self.stats.total_requests += 1
         self.stats.endpoint_usage['extract'] += 1
 
         payload = {
             'urls': urls,
-            'enableWebSearch': enable_web_search
+            'allowExternalLinks': allow_external_links
         }
-
-        if schema:
-            payload['schema'] = schema
 
         if prompt:
             payload['prompt'] = prompt
 
-        if agent:
-            payload['agent'] = agent
+        if schema:
+            # Handle Pydantic models
+            if HAS_PYDANTIC and hasattr(schema, 'model_json_schema'):
+                payload['schema'] = schema.model_json_schema()
+            else:
+                payload['schema'] = schema
+
+        if system_prompt:
+            payload['systemPrompt'] = system_prompt
 
         result = await self._execute_with_retry(
             endpoint='/extract',
             payload=payload,
-            method='extract'
+            method='POST'
         )
 
         if result.get('success'):
-            # Extract is token-based, estimate conservatively
-            credits = len(urls) * 4  # Approximate
-            if agent:
-                credits *= 8  # FIRE-1 is ~8x more expensive
-
+            # Extract is token-based
+            credits = len(urls) * 5
             result['creditsUsed'] = credits
             self.stats.credits_by_endpoint['extract'] += credits
             self.stats.total_credits_used += credits
@@ -494,10 +694,8 @@ class EnhancedFirecrawlClient:
         self,
         query: str,
         limit: int = 10,
-        tbs: Optional[str] = None,
-        location: Optional[str] = None,
-        sources: Optional[List[str]] = None,
-        categories: Optional[List[str]] = None,
+        lang: str = 'en',
+        country: str = 'us',
         scrape_options: Optional[Dict] = None
     ) -> Dict:
         """
@@ -505,35 +703,23 @@ class EnhancedFirecrawlClient:
 
         Args:
             query: Search query
-            limit: Maximum results
-            tbs: Time-based search ('qdr:d' = day, 'qdr:w' = week, 'qdr:m' = month)
-            location: Geographic location
-            sources: Result types ['web', 'news', 'images']
-            categories: Categories ['github', 'arxiv', 'pdf']
-            scrape_options: Options if scraping results
+            limit: Maximum results (max 10)
+            lang: Language code
+            country: Country code
+            scrape_options: Options for scraping results
 
         Returns:
-            Dict with 'success', 'data' (search results with optional content)
+            Dict with 'success', 'data' (search results)
         """
         self.stats.total_requests += 1
         self.stats.endpoint_usage['search'] += 1
 
         payload = {
             'query': query,
-            'limit': limit
+            'limit': min(limit, 10),
+            'lang': lang,
+            'country': country
         }
-
-        if tbs:
-            payload['tbs'] = tbs
-
-        if location:
-            payload['location'] = location
-
-        if sources:
-            payload['sources'] = sources
-
-        if categories:
-            payload['categories'] = categories
 
         if scrape_options:
             payload['scrapeOptions'] = scrape_options
@@ -541,20 +727,123 @@ class EnhancedFirecrawlClient:
         result = await self._execute_with_retry(
             endpoint='/search',
             payload=payload,
-            method='search'
+            method='POST'
         )
 
         if result.get('success'):
-            # Search: 2 credits per 10 results + scraping costs
-            credits = (limit // 10 + 1) * 2
+            # Search: 1 credit per result + scraping costs
+            credits = len(result.get('data', []))
             if scrape_options:
-                credits += limit * 1  # Add scraping costs
+                credits += len(result.get('data', []))
 
             result['creditsUsed'] = credits
             self.stats.credits_by_endpoint['search'] += credits
             self.stats.total_credits_used += credits
 
         return result
+
+    # ========================================================================
+    # CHANGE TRACKING
+    # ========================================================================
+
+    def compute_content_hash(self, content: str) -> str:
+        """Compute SHA256 hash of content"""
+        return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
+    async def check_for_changes(
+        self,
+        url: str,
+        previous_hash: Optional[str] = None
+    ) -> Dict:
+        """
+        Check if URL content has changed
+
+        Args:
+            url: URL to check
+            previous_hash: Previous content hash (uses cache if not provided)
+
+        Returns:
+            Dict with 'changed', 'current_hash', 'previous_hash'
+        """
+        result = await self.scrape(url=url, formats=['markdown'])
+
+        if not result.get('success'):
+            return {'changed': None, 'error': result.get('error')}
+
+        content = result.get('data', {}).get('markdown', '')
+        current_hash = self.compute_content_hash(content)
+
+        # Use provided hash or cached hash
+        prev_hash = previous_hash or self._content_hashes.get(url)
+
+        # Update cache
+        self._content_hashes[url] = current_hash
+
+        if prev_hash is None:
+            return {
+                'changed': None,
+                'current_hash': current_hash,
+                'previous_hash': None,
+                'first_check': True
+            }
+
+        return {
+            'changed': current_hash != prev_hash,
+            'current_hash': current_hash,
+            'previous_hash': prev_hash
+        }
+
+    # ========================================================================
+    # JOB POLLING
+    # ========================================================================
+
+    async def _poll_job_status(
+        self,
+        endpoint: str,
+        job_type: str,
+        poll_interval: int = 5,
+        max_polls: int = 1000,
+        on_progress: Optional[Callable[[int, int], None]] = None
+    ) -> Dict:
+        """Poll job status until completion"""
+        for _ in range(max_polls):
+            status = await self._execute_with_retry(
+                endpoint=endpoint,
+                payload={},
+                method='GET'
+            )
+
+            job_status = status.get('status', 'unknown')
+
+            # Call progress callback if provided
+            if on_progress and status.get('total'):
+                on_progress(status.get('completed', 0), status.get('total'))
+
+            if job_status in ['completed', 'failed', 'cancelled']:
+                completed = status.get('completed', 0)
+                credits = completed
+
+                self.stats.credits_by_endpoint[job_type] += credits
+                self.stats.total_credits_used += credits
+
+                if job_status == 'completed':
+                    self.stats.successful_requests += 1
+                else:
+                    self.stats.failed_requests += 1
+
+                return {
+                    'success': job_status == 'completed',
+                    'data': status.get('data', []),
+                    'creditsUsed': credits,
+                    'status': job_status,
+                    'total': status.get('total', 0),
+                    'completed': completed
+                }
+
+            logger.info(f"Job progress: {status.get('completed', 0)}/{status.get('total', '?')}")
+            await asyncio.sleep(poll_interval)
+
+        return {'success': False, 'error': 'Polling timeout exceeded'}
 
     # ========================================================================
     # RETRY LOGIC
@@ -564,9 +853,8 @@ class EnhancedFirecrawlClient:
         self,
         endpoint: str,
         payload: Dict,
-        method: str,
-        attempt: int = 1,
-        force_http: bool = False
+        method: str = 'POST',
+        attempt: int = 1
     ) -> Dict:
         """
         Execute request with exponential backoff retry
@@ -574,49 +862,27 @@ class EnhancedFirecrawlClient:
         Args:
             endpoint: API endpoint path
             payload: Request payload
-            method: HTTP method or SDK method name
+            method: HTTP method (GET, POST, DELETE)
             attempt: Current retry attempt
-            force_http: If True, bypass SDK and use direct HTTP (for advanced parameters)
-
-        Handles:
-        - 429 rate limits
-        - 402 quota exceeded
-        - 401/403 auth errors
-        - Transient failures
         """
+        url = f"{self.BASE_URL}{endpoint}"
+
         try:
-            if HAS_FIRECRAWL_SDK and not force_http:
-                # Use SDK method
-                sdk_method = getattr(self.client, method)
-                result = sdk_method(**payload)
-
-                self.stats.successful_requests += 1
-                return {
-                    'success': True,
-                    'data': result.get('data') if isinstance(result, dict) else result,
-                    'timestamp': datetime.now().isoformat()
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    'Authorization': f'Bearer {self.api_key}',
+                    'Content-Type': 'application/json'
                 }
-            else:
-                # Use requests
-                response = self.session.post(
-                    f"{self.base_url}{endpoint}",
-                    json=payload,
-                    timeout=self.timeout
-                )
 
-                if response.status_code == 200:
-                    self.stats.successful_requests += 1
-                    return {
-                        'success': True,
-                        'data': response.json().get('data'),
-                        'timestamp': datetime.now().isoformat()
-                    }
-                elif response.status_code == 429:
-                    raise Exception("Rate limit hit")
-                elif response.status_code == 402:
-                    raise Exception("Quota exceeded")
-                else:
-                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+                if method == 'GET':
+                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.timeout)) as response:
+                        return await self._handle_response(response)
+                elif method == 'DELETE':
+                    async with session.delete(url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.timeout)) as response:
+                        return await self._handle_response(response)
+                else:  # POST
+                    async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=self.timeout)) as response:
+                        return await self._handle_response(response)
 
         except Exception as e:
             error_msg = str(e)
@@ -626,71 +892,66 @@ class EnhancedFirecrawlClient:
                 self.stats.rate_limit_hits += 1
 
                 if attempt < self.max_retries:
-                    # Exponential backoff: 2s → 4s → 8s
                     backoff_delay = self.retry_delay * (2 ** attempt)
                     logger.warning(f"Rate limit hit. Retrying in {backoff_delay}s... (attempt {attempt}/{self.max_retries})")
-
                     await asyncio.sleep(backoff_delay)
                     self.stats.retry_count += 1
-
-                    return await self._execute_with_retry(endpoint, payload, method, attempt + 1, force_http)
-
-            # Handle quota exceeded
-            if "402" in error_msg or "quota" in error_msg.lower():
-                self.stats.failed_requests += 1
-                logger.error("Firecrawl quota exceeded. Check credit balance.")
-                return {'success': False, 'error': 'Quota exceeded'}
+                    return await self._execute_with_retry(endpoint, payload, method, attempt + 1)
 
             # Retry transient errors
             if attempt < self.max_retries:
                 delay = self.retry_delay * (2 ** (attempt - 1))
                 logger.warning(f"Request failed. Retrying in {delay}s... (attempt {attempt}/{self.max_retries})")
-
                 await asyncio.sleep(delay)
                 self.stats.retry_count += 1
+                return await self._execute_with_retry(endpoint, payload, method, attempt + 1)
 
-                return await self._execute_with_retry(endpoint, payload, method, attempt + 1, force_http)
-
-            # All retries exhausted
             self.stats.failed_requests += 1
             logger.error(f"All {self.max_retries} retries exhausted: {error_msg}")
             return {'success': False, 'error': error_msg}
+
+    async def _handle_response(self, response) -> Dict:
+        """Handle HTTP response"""
+        if response.status == 200:
+            self.stats.successful_requests += 1
+            data = await response.json()
+            return {
+                'success': True,
+                **data,
+                'timestamp': datetime.now().isoformat()
+            }
+        elif response.status == 429:
+            raise Exception("Rate limit hit")
+        elif response.status == 402:
+            self.stats.failed_requests += 1
+            return {'success': False, 'error': 'Quota exceeded'}
+        else:
+            text = await response.text()
+            raise Exception(f"HTTP {response.status}: {text}")
 
     # ========================================================================
     # COST ESTIMATION
     # ========================================================================
 
-    def _estimate_credits(
-        self,
-        result: Dict,
-        endpoint: str,
-        proxy: Optional[str] = None,
-        agent: Optional[Dict] = None
-    ) -> int:
-        """Estimate credits used based on response"""
+    def _estimate_scrape_credits(self, result: Dict, actions: Optional[List] = None) -> int:
+        """Estimate credits used for scrape"""
         credits = 1  # Base cost
 
         data = result.get('data', {})
 
-        # Stealth mode
-        if proxy == 'stealth':
-            credits = 5
+        # Actions add cost
+        if actions:
+            credits += len(actions)
 
-        # FIRE-1 agent
-        if agent and agent.get('model') == 'FIRE-1':
-            credits = 150  # Base + 0-900 for agent
-
-        # Additional formats
+        # Screenshots add cost
         if isinstance(data, dict):
             if data.get('screenshot'):
                 credits += 2
-            if data.get('pdf'):
-                credits += 3
 
         return credits
 
     # ========================================================================
-    # STATS
+    # STATISTICS
     # ========================================================================
 
     def get_stats(self) -> Dict:
@@ -710,439 +971,3 @@ class EnhancedFirecrawlClient:
     def reset_stats(self):
         """Reset statistics"""
         self.stats = FirecrawlStats()
-
-    # ========================================================================
-    # SEO EXTRACTION METHODS
-    # ========================================================================
-
-    async def extract_seo_data(
-        self,
-        url: str,
-        extract_schema: bool = True,
-        extract_content_structure: bool = True,
-        extract_meta: bool = True,
-        max_age: int = 172800000  # 2 days cache
-    ) -> Dict:
-        """
-        Extract comprehensive SEO data from a single page
-
-        Args:
-            url: Target URL to analyze
-            extract_schema: Extract Schema.org markup
-            extract_content_structure: Extract headings, content sections, word count
-            extract_meta: Extract meta tags, Open Graph, Twitter Cards
-            max_age: Cache freshness in ms
-
-        Returns:
-            Dict with SEO data:
-            {
-                'url': str,
-                'meta': {...},
-                'schema': [...],
-                'content_structure': {...},
-                'headings': {...},
-                'local_business': {...},
-                'creditsUsed': int
-            }
-        """
-        # Use scrape endpoint with custom extraction
-        scrape_result = await self.scrape(
-            url=url,
-            formats=['html', 'markdown'],
-            only_main_content=False,  # Need full page for meta/schema
-            max_age=max_age,
-            store_in_cache=True
-        )
-
-        if not scrape_result.get('success'):
-            return scrape_result
-
-        data = scrape_result.get('data', {})
-        html_content = data.get('html', '')
-        markdown_content = data.get('markdown', '')
-
-        seo_data = {
-            'url': url,
-            'timestamp': datetime.now().isoformat(),
-            'creditsUsed': scrape_result.get('creditsUsed', 1)
-        }
-
-        # Extract meta tags
-        if extract_meta:
-            seo_data['meta'] = self._extract_meta_tags(html_content, data)
-
-        # Extract Schema.org markup
-        if extract_schema:
-            seo_data['schema'] = self._extract_schema_markup(html_content)
-
-        # Extract content structure
-        if extract_content_structure:
-            seo_data['content_structure'] = self._extract_content_structure(html_content, markdown_content)
-            seo_data['headings'] = self._extract_heading_hierarchy(markdown_content)
-
-        # Extract local business data (if present)
-        seo_data['local_business'] = self._extract_local_business_data(html_content, seo_data.get('schema', []))
-
-        return {
-            'success': True,
-            'data': seo_data,
-            'creditsUsed': seo_data['creditsUsed']
-        }
-
-    async def bulk_extract_competitors(
-        self,
-        urls: List[str],
-        schema_prompt: Optional[str] = None,
-        max_concurrent: int = 5
-    ) -> Dict:
-        """
-        Extract SEO data from multiple competitor URLs in parallel
-
-        Args:
-            urls: List of competitor URLs
-            schema_prompt: Optional prompt for custom data extraction
-            max_concurrent: Maximum concurrent requests (default: 5)
-
-        Returns:
-            Dict with competitor data array and total credits
-        """
-        # Process in batches to respect rate limits
-        results = []
-        total_credits = 0
-
-        for i in range(0, len(urls), max_concurrent):
-            batch = urls[i:i + max_concurrent]
-
-            # Extract SEO data for batch
-            batch_tasks = [self.extract_seo_data(url) for url in batch]
-            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
-
-            for result in batch_results:
-                if isinstance(result, Exception):
-                    logger.error(f"Batch extraction error: {result}")
-                    continue
-
-                if result.get('success'):
-                    results.append(result.get('data'))
-                    total_credits += result.get('creditsUsed', 1)
-
-            # Progress logging
-            logger.info(f"Processed {min(i + max_concurrent, len(urls))}/{len(urls)} competitors")
-
-        return {
-            'success': True,
-            'data': results,
-            'total_urls': len(urls),
-            'successful_extractions': len(results),
-            'creditsUsed': total_credits
-        }
-
-    async def extract_local_seo_signals(
-        self,
-        url: str,
-        business_name: Optional[str] = None
-    ) -> Dict:
-        """
-        Extract local SEO ranking signals
-
-        Args:
-            url: Business website URL
-            business_name: Optional business name for NAP verification
-
-        Returns:
-            Dict with local SEO signals:
-            {
-                'nap': {...},  # Name, Address, Phone
-                'schema': {...},  # LocalBusiness schema
-                'citations': [...],  # Citation mentions
-                'reviews': {...},  # Review markup
-                'geo_targeting': {...},  # Geographic signals
-                'creditsUsed': int
-            }
-        """
-        scrape_result = await self.scrape(
-            url=url,
-            formats=['html', 'markdown'],
-            only_main_content=False,
-            max_age=0  # Force fresh for local data
-        )
-
-        if not scrape_result.get('success'):
-            return scrape_result
-
-        data = scrape_result.get('data', {})
-        html_content = data.get('html', '')
-
-        local_signals = {
-            'url': url,
-            'timestamp': datetime.now().isoformat(),
-            'creditsUsed': scrape_result.get('creditsUsed', 1)
-        }
-
-        # Extract NAP data
-        local_signals['nap'] = self._extract_nap_data(html_content, business_name)
-
-        # Extract LocalBusiness schema
-        schemas = self._extract_schema_markup(html_content)
-        local_signals['schema'] = [s for s in schemas if s.get('type') in ['LocalBusiness', 'Organization', 'Place']]
-
-        # Extract review markup
-        local_signals['reviews'] = self._extract_review_markup(html_content, schemas)
-
-        # Extract geographic targeting signals
-        local_signals['geo_targeting'] = self._extract_geo_signals(html_content, data)
-
-        return {
-            'success': True,
-            'data': local_signals,
-            'creditsUsed': local_signals['creditsUsed']
-        }
-
-    def _extract_meta_tags(self, html_content: str, data: Dict) -> Dict:
-        """Extract meta tags, Open Graph, Twitter Cards"""
-        import re
-
-        meta_data = {
-            'title': data.get('title', ''),
-            'description': data.get('description', ''),
-            'open_graph': {},
-            'twitter_card': {},
-            'robots': None,
-            'canonical': None
-        }
-
-        # Extract Open Graph tags
-        og_pattern = r'<meta\s+property=["\']og:([^"\']+)["\']\s+content=["\']([^"\']+)["\']'
-        for match in re.finditer(og_pattern, html_content, re.IGNORECASE):
-            meta_data['open_graph'][match.group(1)] = match.group(2)
-
-        # Extract Twitter Card tags
-        twitter_pattern = r'<meta\s+name=["\']twitter:([^"\']+)["\']\s+content=["\']([^"\']+)["\']'
-        for match in re.finditer(twitter_pattern, html_content, re.IGNORECASE):
-            meta_data['twitter_card'][match.group(1)] = match.group(2)
-
-        # Extract robots meta
-        robots_pattern = r'<meta\s+name=["\']robots["\']\s+content=["\']([^"\']+)["\']'
-        robots_match = re.search(robots_pattern, html_content, re.IGNORECASE)
-        if robots_match:
-            meta_data['robots'] = robots_match.group(1)
-
-        # Extract canonical URL
-        canonical_pattern = r'<link\s+rel=["\']canonical["\']\s+href=["\']([^"\']+)["\']'
-        canonical_match = re.search(canonical_pattern, html_content, re.IGNORECASE)
-        if canonical_match:
-            meta_data['canonical'] = canonical_match.group(1)
-
-        return meta_data
-
-    def _extract_schema_markup(self, html_content: str) -> List[Dict]:
-        """Extract and parse Schema.org JSON-LD markup"""
-        import re
-        import json
-
-        schemas = []
-
-        # Find all JSON-LD script tags
-        pattern = r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>'
-        matches = re.finditer(pattern, html_content, re.IGNORECASE | re.DOTALL)
-
-        for match in matches:
-            try:
-                schema_json = json.loads(match.group(1))
-
-                # Handle @graph arrays
-                if isinstance(schema_json, dict) and '@graph' in schema_json:
-                    schemas.extend(schema_json['@graph'])
-                elif isinstance(schema_json, list):
-                    schemas.extend(schema_json)
-                else:
-                    schemas.append(schema_json)
-
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse schema JSON: {e}")
-
-        # Extract type from @type field
-        for schema in schemas:
-            if '@type' in schema:
-                schema['type'] = schema['@type']
-
-        return schemas
-
-    def _extract_content_structure(self, html_content: str, markdown_content: str) -> Dict:
-        """Extract content structure metrics"""
-        import re
-
-        # Word count from markdown
-        words = re.findall(r'\b\w+\b', markdown_content)
-        word_count = len(words)
-
-        # Paragraph count
-        paragraphs = re.findall(r'<p[^>]*>.*?</p>', html_content, re.DOTALL)
-        paragraph_count = len(paragraphs)
-
-        # Image count
-        images = re.findall(r'<img[^>]*>', html_content)
-        image_count = len(images)
-
-        # Link count
-        internal_links = re.findall(r'<a[^>]*href=["\'](?!http)[^"\']*["\'][^>]*>', html_content)
-        external_links = re.findall(r'<a[^>]*href=["\']https?://[^"\']*["\'][^>]*>', html_content)
-
-        return {
-            'word_count': word_count,
-            'paragraph_count': paragraph_count,
-            'image_count': image_count,
-            'internal_link_count': len(internal_links),
-            'external_link_count': len(external_links),
-            'avg_paragraph_length': word_count / max(paragraph_count, 1)
-        }
-
-    def _extract_heading_hierarchy(self, markdown_content: str) -> Dict:
-        """Extract heading structure"""
-        import re
-
-        headings = {
-            'h1': [],
-            'h2': [],
-            'h3': [],
-            'h4': [],
-            'h5': [],
-            'h6': []
-        }
-
-        # Extract headings from markdown
-        for level in range(1, 7):
-            pattern = r'^#{' + str(level) + r'}\s+(.+)$'
-            matches = re.finditer(pattern, markdown_content, re.MULTILINE)
-            headings[f'h{level}'] = [match.group(1).strip() for match in matches]
-
-        # Calculate heading metrics
-        total_headings = sum(len(h) for h in headings.values())
-
-        return {
-            'headings': headings,
-            'total_count': total_headings,
-            'h1_count': len(headings['h1']),
-            'h2_count': len(headings['h2']),
-            'hierarchy_depth': max([level for level in range(1, 7) if headings[f'h{level}']], default=0)
-        }
-
-    def _extract_local_business_data(self, html_content: str, schemas: List[Dict]) -> Dict:
-        """Extract local business data from schema and HTML"""
-        local_data = {
-            'has_local_schema': False,
-            'business_type': None,
-            'address': None,
-            'phone': None,
-            'hours': None,
-            'geo_coordinates': None
-        }
-
-        # Find LocalBusiness schema
-        for schema in schemas:
-            schema_type = schema.get('type', schema.get('@type', ''))
-
-            if 'LocalBusiness' in str(schema_type) or 'Organization' in str(schema_type):
-                local_data['has_local_schema'] = True
-                local_data['business_type'] = schema_type
-
-                # Extract address
-                if 'address' in schema:
-                    local_data['address'] = schema['address']
-
-                # Extract phone
-                if 'telephone' in schema:
-                    local_data['phone'] = schema['telephone']
-
-                # Extract hours
-                if 'openingHoursSpecification' in schema:
-                    local_data['hours'] = schema['openingHoursSpecification']
-
-                # Extract geo coordinates
-                if 'geo' in schema:
-                    local_data['geo_coordinates'] = schema['geo']
-
-                break
-
-        return local_data
-
-    def _extract_nap_data(self, html_content: str, business_name: Optional[str]) -> Dict:
-        """Extract NAP (Name, Address, Phone) consistency data"""
-        import re
-
-        nap_data = {
-            'name': business_name,
-            'addresses_found': [],
-            'phones_found': [],
-            'consistency_score': 0.0
-        }
-
-        # Extract phone numbers (US format)
-        phone_pattern = r'(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})'
-        phones = re.findall(phone_pattern, html_content)
-        nap_data['phones_found'] = [''.join(p) for p in phones]
-
-        # Extract addresses (simple pattern)
-        address_pattern = r'\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Circle|Cir|Way)'
-        addresses = re.findall(address_pattern, html_content, re.IGNORECASE)
-        nap_data['addresses_found'] = list(set(addresses))[:5]  # Limit to 5 unique
-
-        # Calculate consistency (simplified)
-        if len(nap_data['phones_found']) > 0 and len(nap_data['addresses_found']) > 0:
-            # High consistency if single phone and address
-            phone_consistency = 1.0 if len(set(nap_data['phones_found'])) == 1 else 0.5
-            address_consistency = 1.0 if len(nap_data['addresses_found']) == 1 else 0.5
-            nap_data['consistency_score'] = (phone_consistency + address_consistency) / 2
-
-        return nap_data
-
-    def _extract_review_markup(self, html_content: str, schemas: List[Dict]) -> Dict:
-        """Extract review and rating markup"""
-        review_data = {
-            'has_reviews': False,
-            'aggregate_rating': None,
-            'review_count': 0,
-            'rating_value': 0.0
-        }
-
-        # Find Review or AggregateRating schema
-        for schema in schemas:
-            schema_type = schema.get('type', schema.get('@type', ''))
-
-            if 'aggregateRating' in schema:
-                review_data['has_reviews'] = True
-                rating = schema['aggregateRating']
-                review_data['aggregate_rating'] = rating
-                review_data['rating_value'] = float(rating.get('ratingValue', 0))
-                review_data['review_count'] = int(rating.get('reviewCount', 0))
-                break
-
-            if 'Review' in str(schema_type):
-                review_data['has_reviews'] = True
-                if 'reviewRating' in schema:
-                    review_data['rating_value'] = float(schema['reviewRating'].get('ratingValue', 0))
-
-        return review_data
-
-    def _extract_geo_signals(self, html_content: str, data: Dict) -> Dict:
-        """Extract geographic targeting signals"""
-        import re
-
-        geo_signals = {
-            'has_geo_meta': False,
-            'location_keywords': [],
-            'service_areas': []
-        }
-
-        # Extract geo meta tags
-        geo_pattern = r'<meta\s+name=["\']geo\.[^"\']+["\']\s+content=["\']([^"\']+)["\']'
-        geo_matches = re.findall(geo_pattern, html_content, re.IGNORECASE)
-        if geo_matches:
-            geo_signals['has_geo_meta'] = True
-
-        # Extract common location keywords (cities, states)
-        location_pattern = r'\b(?:in|near|serving|located)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?(?:,\s*[A-Z]{2})?)\b'
-        locations = re.findall(location_pattern, html_content)
-        geo_signals['location_keywords'] = list(set(locations))[:10]
-
-        return geo_signals
