@@ -1,8 +1,8 @@
 """
-Firecrawl Scraper v2.0 - Professional web scraping system built on Firecrawl API v2
+Firecrawl Scraper v2.1 - Ultimate SEO Machine
 
-A comprehensive, production-ready web scraping solution with:
-- 5 scraping strategies (CRAWL, MAP, EXTRACT, BATCH, DYNAMIC)
+A comprehensive, production-ready web scraping and SEO solution with:
+- 6 scraping strategies (CRAWL, MAP, EXTRACT, BATCH, DYNAMIC, SEO)
 - Batch scraping for 1000+ URLs in parallel
 - Actions support (click, scroll, wait, screenshot)
 - Real-time monitoring with WebSocket
@@ -12,6 +12,12 @@ A comprehensive, production-ready web scraping solution with:
 - Checkpoint/resume system for reliability
 - Cost management and estimation
 - 100% configurable via environment variables
+
+NEW in v2.1 - Ultimate SEO Machine:
+- DataForSEO integration for SERP, keywords, backlinks, on-page analysis
+- SEO orchestrator for comprehensive audits
+- Competitor analysis and content gap detection
+- Keyword research with search volume and difficulty
 
 Quick Start:
     >>> import asyncio
@@ -44,7 +50,7 @@ NEW in v2.0 - Dynamic Scraping with Actions:
 For detailed usage, see README.md and DATA_FORMAT.md
 """
 
-__version__ = '2.0.0'
+__version__ = '2.1.0'
 __author__ = 'Firecrawl Scraper Contributors'
 __license__ = 'MIT'
 
@@ -55,10 +61,15 @@ from .config import Config
 from .extraction.universal_scraper import UniversalScraper
 from .core.firecrawl_client import EnhancedFirecrawlClient, ActionSequences
 
-# Import new v2.0 components
+# Import v2.0 components
 from .core.change_tracker import ChangeTracker
 from .core.websocket_monitor import WebSocketMonitor
 from .core.media_extractor import MediaExtractor
+
+# Import v2.1 SEO components
+from .core.dataforseo_client import DataForSEOClient
+from .orchestrators.seo_orchestrator import SEOOrchestrator
+from .extraction.seo_enrichment import SEOEnrichmentStrategy
 
 # Define public API
 __all__ = [
@@ -76,4 +87,9 @@ __all__ = [
     'ChangeTracker',
     'WebSocketMonitor',
     'MediaExtractor',
+
+    # v2.1 SEO features
+    'DataForSEOClient',
+    'SEOOrchestrator',
+    'SEOEnrichmentStrategy',
 ]

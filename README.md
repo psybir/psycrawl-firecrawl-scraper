@@ -1,15 +1,22 @@
-# Firecrawl Scraper v2.0 - Production-Grade Web Scraping System
+# Firecrawl Scraper v2.1 - Ultimate SEO Machine
 
-A battle-tested, professional web scraping system built on **Firecrawl API v2**. Now with batch scraping, browser actions, real-time monitoring, and change tracking.
+A battle-tested, professional web scraping and SEO system combining **Firecrawl API v2** and **DataForSEO API v3**. The ultimate tool for content scraping, SEO analysis, keyword research, and competitive intelligence.
 
-## What's New in v2.0
+## What's New in v2.1 - Ultimate SEO Machine
+
+- **DataForSEO Integration** - Full SERP, keywords, backlinks, on-page analysis
+- **SEO Orchestrator** - Comprehensive audits with one function call
+- **Competitor Analysis** - Auto-discover competitors, content gaps, keyword opportunities
+- **Keyword Research** - Search volume, CPC, difficulty, and keyword ideas
+- **6 Strategies** - CRAWL, MAP, EXTRACT, BATCH, DYNAMIC, and SEO
+
+## What's in v2.0
 
 - **Batch Scraping** - Scrape 1000+ URLs in parallel with async processing
 - **Actions Support** - Click, scroll, wait, screenshot for dynamic JavaScript sites
 - **Real-Time Monitoring** - Live progress updates with WebSocket/polling
 - **Change Tracking** - Monitor websites for content changes over time
 - **Media Extraction** - Extract content from PDFs, DOCX, and images
-- **5 Strategies** - CRAWL, MAP, EXTRACT, BATCH, and DYNAMIC
 
 ---
 
@@ -110,7 +117,14 @@ Use For: Content analysis, trend monitoring, research
 
 ## ✨ Key Features
 
-### 5 Intelligent Scraping Strategies
+### 6 Intelligent Scraping Strategies
+
+**SEO** (NEW in v2.1) - Ultimate SEO Machine
+- Combines Firecrawl content scraping with DataForSEO analysis
+- Full SEO audits: backlinks, keywords, SERP rankings, technical SEO
+- Competitor analysis and content gap detection
+- Cost: Varies by modules (see DataForSEO pricing)
+- Best for: SEO audits, competitive intelligence, keyword research
 
 **BATCH** (NEW in v2.0) - Large-Scale Parallel Scraping
 - Scrape 1000+ URLs simultaneously
@@ -154,7 +168,14 @@ Use For: Content analysis, trend monitoring, research
 - **Smart URL Validation**: Catches invalid URLs before wasting credits
 - **Multiple Output Formats**: Markdown, HTML, JSON, images, screenshots
 
-### NEW v2.0 Features
+### NEW v2.1 SEO Features
+
+- **DataForSEO Client**: Complete API v3 integration (SERP, Keywords, Backlinks, OnPage, Labs)
+- **SEO Orchestrator**: Full audits, competitor analysis, keyword research with one call
+- **SEO Strategy**: Combine scraping with SEO analysis in unified workflow
+- **Comprehensive Reports**: Auto-generated Markdown and JSON SEO reports
+
+### v2.0 Features
 
 - **Actions Support**: Browser automation (click, scroll, wait, screenshot)
 - **Batch Scraping**: Async API for 1000+ URL parallel processing
@@ -179,12 +200,22 @@ cp .env.example .env
 # Edit .env and add your FIRECRAWL_API_KEY
 ```
 
-### 2. Get Your API Key
+### 2. Get Your API Keys
 
+**Firecrawl (Required for scraping):**
 1. Visit [https://www.firecrawl.dev/](https://www.firecrawl.dev/)
 2. Sign up for a free account (500 credits free)
 3. Copy your API key from dashboard
-4. Add it to your `.env` file
+4. Add it to your `.env` file as `FIRECRAWL_API_KEY`
+
+**DataForSEO (Required for SEO features):**
+1. Visit [https://app.dataforseo.com/](https://app.dataforseo.com/)
+2. Sign up for an account
+3. Get your credentials from API Access page
+4. Add to `.env`:
+   - `DATAFORSEO_LOGIN=your_email@example.com`
+   - `DATAFORSEO_PASSWORD=your_api_password`
+   - `DATAFORSEO_ENABLED=true`
 
 ### 3. Run Your First Scrape
 
@@ -232,6 +263,58 @@ async def main():
 
 # Run it
 asyncio.run(main())
+```
+
+### 4. SEO Machine Quick Start (NEW in v2.1)
+
+```python
+import asyncio
+from firecrawl_scraper import SEOOrchestrator
+
+async def main():
+    # Initialize SEO Orchestrator
+    seo = SEOOrchestrator()
+
+    # Quick domain audit
+    result = await seo.quick_audit('example.com')
+    print(f"Domain Rank: {result['domain_rank']}")
+    print(f"Backlinks: {result['backlinks']:,}")
+    print(f"Referring Domains: {result['referring_domains']}")
+
+    # Full SEO audit with content analysis
+    report = await seo.full_seo_audit(
+        domain='example.com',
+        keywords=['seo tools', 'keyword research'],
+        max_pages=50
+    )
+    print(report.generate_summary())
+
+    # Competitor analysis
+    competitors = await seo.competitor_analysis(
+        domain='mysite.com',
+        find_competitors=True  # Auto-discover competitors
+    )
+
+    # Keyword research
+    keywords = await seo.keyword_research(
+        seed_keywords=['python tutorial', 'learn python']
+    )
+    for idea in keywords['keyword_ideas'][:10]:
+        print(f"{idea.keyword}: {idea.search_volume:,} searches/mo")
+
+asyncio.run(main())
+```
+
+**Run SEO Examples:**
+```bash
+# SEO audit demo
+python examples/seo_audit_example.py
+
+# Competitor analysis
+python examples/competitor_analysis_example.py
+
+# Keyword research
+python examples/keyword_research_example.py
 ```
 
 ## 📊 Real Production Results

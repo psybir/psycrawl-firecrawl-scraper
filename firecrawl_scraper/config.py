@@ -23,8 +23,11 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env and .env.local files
+# .env.local takes precedence for local development
+BASE_DIR = Path(__file__).parent.parent.resolve()
+load_dotenv(BASE_DIR / '.env')  # Load .env first
+load_dotenv(BASE_DIR / '.env.local', override=True)  # .env.local overrides
 
 
 class Config:
@@ -135,17 +138,44 @@ class Config:
     LLM_EXTRACTION_MODEL = os.getenv('LLM_EXTRACTION_MODEL', 'gpt-4o-mini')
     LLM_MAX_TOKENS = int(os.getenv('LLM_MAX_TOKENS', '4096'))
 
+    # ========== DataForSEO Configuration (NEW) ==========
+    DATAFORSEO_LOGIN = os.getenv('DATAFORSEO_LOGIN')
+    DATAFORSEO_PASSWORD = os.getenv('DATAFORSEO_PASSWORD')
+    DATAFORSEO_ENABLED = os.getenv('DATAFORSEO_ENABLED', 'false').lower() == 'true'
+
+    # DataForSEO Module Toggles
+    SEO_SERP_ENABLED = os.getenv('SEO_SERP_ENABLED', 'true').lower() == 'true'
+    SEO_KEYWORDS_ENABLED = os.getenv('SEO_KEYWORDS_ENABLED', 'true').lower() == 'true'
+    SEO_BACKLINKS_ENABLED = os.getenv('SEO_BACKLINKS_ENABLED', 'true').lower() == 'true'
+    SEO_ONPAGE_ENABLED = os.getenv('SEO_ONPAGE_ENABLED', 'true').lower() == 'true'
+    SEO_LABS_ENABLED = os.getenv('SEO_LABS_ENABLED', 'true').lower() == 'true'
+
+    # DataForSEO Default Settings
+    SEO_DEFAULT_LOCATION = os.getenv('SEO_DEFAULT_LOCATION', 'United States')
+    SEO_DEFAULT_LOCATION_CODE = int(os.getenv('SEO_DEFAULT_LOCATION_CODE', '2840'))  # US
+    SEO_DEFAULT_LANGUAGE = os.getenv('SEO_DEFAULT_LANGUAGE', 'en')
+    SEO_DEFAULT_LANGUAGE_CODE = os.getenv('SEO_DEFAULT_LANGUAGE_CODE', 'en')
+    SEO_DEFAULT_DEVICE = os.getenv('SEO_DEFAULT_DEVICE', 'desktop')  # desktop, mobile, tablet
+
+    # DataForSEO Rate Limiting
+    SEO_MAX_CONCURRENT = int(os.getenv('SEO_MAX_CONCURRENT', '5'))
+    SEO_REQUEST_DELAY = float(os.getenv('SEO_REQUEST_DELAY', '0.5'))  # seconds between requests
+
+    # DataForSEO Output
+    SEO_OUTPUT_DIR = Path(os.getenv('SEO_OUTPUT_DIR', OUTPUT_DIR / 'seo_reports')).resolve()
+
     # ========== Helper Methods ==========
 
     @classmethod
     def ensure_directories(cls):
         """
         Ensure all required directories exist.
-        Creates OUTPUT_DIR, CHECKPOINT_DIR, and CHANGE_TRACKING_DIR if they don't exist.
+        Creates OUTPUT_DIR, CHECKPOINT_DIR, CHANGE_TRACKING_DIR, and SEO_OUTPUT_DIR if they don't exist.
         """
         cls.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         cls.CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
         cls.CHANGE_TRACKING_DIR.mkdir(parents=True, exist_ok=True)
+        cls.SEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     @classmethod
     def get_output_path(cls, category: str) -> Path:
@@ -234,6 +264,18 @@ class Config:
         print(f"Change Tracking: {cls.CHANGE_TRACKING_ENABLED}")
         print(f"WebSocket Enabled: {cls.WEBSOCKET_ENABLED}")
         print(f"Media Extraction: {cls.MEDIA_EXTRACTION_ENABLED}")
+        print("-" * 60)
+        print("DataForSEO Settings:")
+        print(f"DataForSEO Enabled: {cls.DATAFORSEO_ENABLED}")
+        print(f"DataForSEO Login: {'*' * 10}{cls.DATAFORSEO_LOGIN[-10:] if cls.DATAFORSEO_LOGIN else 'NOT SET'}")
+        print(f"SEO SERP Module: {cls.SEO_SERP_ENABLED}")
+        print(f"SEO Keywords Module: {cls.SEO_KEYWORDS_ENABLED}")
+        print(f"SEO Backlinks Module: {cls.SEO_BACKLINKS_ENABLED}")
+        print(f"SEO OnPage Module: {cls.SEO_ONPAGE_ENABLED}")
+        print(f"SEO Labs Module: {cls.SEO_LABS_ENABLED}")
+        print(f"SEO Default Location: {cls.SEO_DEFAULT_LOCATION} ({cls.SEO_DEFAULT_LOCATION_CODE})")
+        print(f"SEO Default Language: {cls.SEO_DEFAULT_LANGUAGE}")
+        print(f"SEO Output Directory: {cls.SEO_OUTPUT_DIR}")
         print("="*60 + "\n")
 
     @classmethod
@@ -260,7 +302,18 @@ class Config:
             'enable_screenshots': cls.ENABLE_SCREENSHOTS,
             'change_tracking_enabled': cls.CHANGE_TRACKING_ENABLED,
             'websocket_enabled': cls.WEBSOCKET_ENABLED,
-            'media_extraction_enabled': cls.MEDIA_EXTRACTION_ENABLED
+            'media_extraction_enabled': cls.MEDIA_EXTRACTION_ENABLED,
+            # DataForSEO settings
+            'dataforseo_enabled': cls.DATAFORSEO_ENABLED,
+            'seo_serp_enabled': cls.SEO_SERP_ENABLED,
+            'seo_keywords_enabled': cls.SEO_KEYWORDS_ENABLED,
+            'seo_backlinks_enabled': cls.SEO_BACKLINKS_ENABLED,
+            'seo_onpage_enabled': cls.SEO_ONPAGE_ENABLED,
+            'seo_labs_enabled': cls.SEO_LABS_ENABLED,
+            'seo_default_location': cls.SEO_DEFAULT_LOCATION,
+            'seo_default_location_code': cls.SEO_DEFAULT_LOCATION_CODE,
+            'seo_default_language': cls.SEO_DEFAULT_LANGUAGE,
+            'seo_output_dir': str(cls.SEO_OUTPUT_DIR)
         }
 
 
