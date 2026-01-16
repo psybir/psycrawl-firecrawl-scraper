@@ -9,7 +9,8 @@ This script performs comprehensive local SEO research for escape.exe (escapeexe.
 4. Discovers and analyzes all competitors in the area
 5. Performs keyword research for escape room terms
 6. Web research for awards, news, and third-party reviews
-7. Generates comprehensive reports
+7. Design/UI/UX analysis with screenshots and LLM extraction (v2.0)
+8. Generates comprehensive reports
 
 Target Business:
 - Name: escape.exe
@@ -28,9 +29,10 @@ Usage:
     python examples/escape_exe_research.py --module competitors
     python examples/escape_exe_research.py --module keywords
     python examples/escape_exe_research.py --module web
+    python examples/escape_exe_research.py --module design    # v2.0 UI/UX analysis
 
-Estimated runtime: ~30 minutes
-Estimated cost: ~$3.50 DataForSEO + 20 Firecrawl credits
+Estimated runtime: ~30-45 minutes (with design analysis)
+Estimated cost: ~$3.50 DataForSEO + 25 Firecrawl credits
 """
 
 import asyncio
@@ -49,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from firecrawl_scraper import Config, EnhancedFirecrawlClient
 from firecrawl_scraper.core.dataforseo_client import DataForSEOClient
+from firecrawl_scraper.extraction.design_analyzer import DesignAnalyzer
 
 # Configure logging
 logging.basicConfig(
@@ -1018,6 +1021,78 @@ async def run_web_research(firecrawl_client: EnhancedFirecrawlClient) -> Dict:
     return result
 
 
+async def run_design_analysis(
+    firecrawl_client: EnhancedFirecrawlClient,
+    competitor_urls: List[str] = None
+) -> Dict:
+    """
+    Perform comprehensive UI/UX design analysis (v2.0).
+
+    Captures:
+    - Full-page screenshots (desktop + mobile)
+    - Design system (colors, typography, spacing)
+    - Component patterns (nav, hero, sections)
+    - CTA analysis for conversion optimization
+    - Psychology-driven design insights
+    - Competitor design comparison
+    """
+    logger.info("=" * 60)
+    logger.info("TASK 7: DESIGN/UI/UX ANALYSIS (v2.0)")
+    logger.info("=" * 60)
+
+    output_dir = OUTPUT_DIR / "visual_design"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    result = {
+        "target_site": None,
+        "competitor_analysis": None,
+        "success": False
+    }
+
+    # Initialize design analyzer
+    analyzer = DesignAnalyzer(firecrawl_client)
+
+    try:
+        # Analyze target site
+        logger.info(f"Analyzing target site: {TARGET_BUSINESS['website']}")
+        target_analysis = await analyzer.analyze_full_design(
+            url=TARGET_BUSINESS['website'],
+            output_dir=output_dir / "target",
+            include_screenshots=True,
+            include_mobile=True
+        )
+        result["target_site"] = target_analysis
+
+        # Generate design brief
+        brief = analyzer.generate_design_brief(output_dir)
+        logger.info("Generated design brief")
+
+        # Analyze competitors if provided
+        if competitor_urls:
+            logger.info(f"Analyzing {len(competitor_urls)} competitor designs...")
+            competitor_dir = output_dir / "competitors"
+            competitor_analysis = await analyzer.compare_competitor_designs(
+                urls=competitor_urls,
+                output_dir=competitor_dir
+            )
+            result["competitor_analysis"] = competitor_analysis
+            logger.info(f"Identified {len(competitor_analysis.get('common_patterns', []))} common patterns")
+            logger.info(f"Found {len(competitor_analysis.get('differentiation_opportunities', []))} differentiation opportunities")
+
+        result["success"] = True
+        logger.info("Design analysis complete!")
+
+    except Exception as e:
+        logger.error(f"Design analysis failed: {e}")
+        result["error"] = str(e)
+
+    # Always save results
+    with open(output_dir / "design_analysis_summary.json", 'w') as f:
+        json.dump(result, f, indent=2, default=str)
+
+    return result
+
+
 async def generate_reports(all_data: Dict) -> Dict:
     """Generate comprehensive reports from all collected data"""
     logger.info("=" * 60)
@@ -1341,11 +1416,26 @@ async def main(module: str = "all"):
     if module in ["all", "web"]:
         all_data["web_research"] = await run_web_research(firecrawl)
 
+    # Design/UI/UX Analysis (v2.0)
+    if module in ["all", "design"]:
+        # Get competitor URLs from GBP "people_also_search" data
+        competitor_urls = []
+        if all_data.get("gbp_data", {}).get("profile", {}).get("people_also_search"):
+            for comp in all_data["gbp_data"]["profile"]["people_also_search"][:5]:
+                if comp.get("url"):
+                    competitor_urls.append(comp["url"])
+
+        all_data["design_analysis"] = await run_design_analysis(
+            firecrawl,
+            competitor_urls=competitor_urls if competitor_urls else None
+        )
+
     # Generate reports
     await generate_reports(all_data)
 
     # Summary
     elapsed = time.time() - start_time
+    design_status = "✓" if all_data.get("design_analysis", {}).get("success") else "○"
     print(f"""
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                           RESEARCH COMPLETE                                   ║
@@ -1358,12 +1448,14 @@ async def main(module: str = "all"):
 ║    - Reviews: {all_data.get('gbp_data', {}).get('review_summary', {}).get('total_reviews', 0)}
 ║    - Competitors found: {len(all_data.get('grid_results', {}).get('all_competitors', {}))}
 ║    - Keywords researched: {len(all_data.get('keyword_research', {}).get('target_keywords', []))}
+║    - Design analysis: {design_status}
 ║
 ║  Reports Generated:
 ║    - full_report.json / full_report.md
 ║    - executive_summary.md
 ║    - seo_strategy.md
 ║    - website_redesign_brief.md
+║    - visual_design/design_brief.md (v2.0)
 ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
     """)

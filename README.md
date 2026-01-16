@@ -372,6 +372,7 @@ python examples/escape_exe_research.py --module scrape
 python examples/escape_exe_research.py --module gbp
 python examples/escape_exe_research.py --module grid
 python examples/escape_exe_research.py --module keywords
+python examples/escape_exe_research.py --module design    # v2.0 UI/UX analysis
 ```
 
 **Output Structure:**
@@ -392,12 +393,68 @@ data/your_research/
 ├── keywords/
 │   ├── target_keywords.json
 │   └── keyword_ideas.json
+├── visual_design/          # NEW in v2.0
+│   ├── target/
+│   │   ├── screenshots/    # Desktop + mobile screenshots
+│   │   ├── design_system.json
+│   │   ├── components.json
+│   │   ├── ctas.json
+│   │   └── psychology.json
+│   ├── competitors/        # Competitor design analysis
+│   └── design_brief.md
 └── reports/
     ├── full_report.json
     ├── executive_summary.md
     ├── seo_strategy.md
     └── website_redesign_brief.md
 ```
+
+### 6. Design/UI/UX Analysis (v2.0)
+
+Capture comprehensive visual design data for website redesigns:
+
+```python
+from firecrawl_scraper.extraction.design_analyzer import DesignAnalyzer
+from firecrawl_scraper import EnhancedFirecrawlClient, Config
+
+async def analyze_design():
+    client = EnhancedFirecrawlClient(Config.API_KEY)
+    analyzer = DesignAnalyzer(client)
+
+    # Full design analysis with screenshots
+    analysis = await analyzer.analyze_full_design(
+        url="https://example.com",
+        output_dir=Path("./design_output"),
+        include_screenshots=True,
+        include_mobile=True
+    )
+
+    # Returns: design_system, components, ctas, psychology, animations
+    print(f"Colors: {analysis['design_system']['color_palette']}")
+    print(f"Typography: {analysis['design_system']['typography']}")
+    print(f"CTAs found: {len(analysis['ctas']['ctas'])}")
+
+    # Compare competitor designs
+    comparison = await analyzer.compare_competitor_designs(
+        urls=["https://competitor1.com", "https://competitor2.com"],
+        output_dir=Path("./competitor_analysis")
+    )
+
+    print(f"Common patterns: {comparison['common_patterns']}")
+    print(f"Differentiation opportunities: {comparison['differentiation_opportunities']}")
+
+asyncio.run(analyze_design())
+```
+
+**Design Analysis Captures:**
+- Full-page screenshots (desktop + mobile viewports)
+- Color palette extraction (primary, secondary, accent, backgrounds)
+- Typography analysis (fonts, sizes, weights)
+- Component patterns (navigation, hero, sections, footer)
+- CTA analysis (placement, style, conversion elements)
+- Psychology insights (trust signals, social proof, urgency elements)
+- Animation patterns (scroll effects, hover states, 3D elements)
+- Competitor design comparison with differentiation opportunities
 
 ## 📊 Real Production Results
 
