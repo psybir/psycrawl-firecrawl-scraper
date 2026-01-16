@@ -1023,21 +1023,23 @@ async def run_web_research(firecrawl_client: EnhancedFirecrawlClient) -> Dict:
 
 async def run_design_analysis(
     firecrawl_client: EnhancedFirecrawlClient,
+    site_urls: List[str] = None,
     competitor_urls: List[str] = None
 ) -> Dict:
     """
-    Perform comprehensive UI/UX design analysis (v2.0).
+    Perform comprehensive UI/UX design analysis (v2.1).
 
     Captures:
-    - Full-page screenshots (desktop + mobile)
-    - Design system (colors, typography, spacing)
-    - Component patterns (nav, hero, sections)
-    - CTA analysis for conversion optimization
-    - Psychology-driven design insights
+    - Multi-page screenshots (desktop + mobile) for ALL site pages
+    - Design system (colors, typography, spacing) per page
+    - Component patterns (nav, hero, sections) with consistency scoring
+    - CTA analysis across entire site
+    - Psychology-driven design insights per page type
+    - Cross-page design consistency metrics
     - Competitor design comparison
     """
     logger.info("=" * 60)
-    logger.info("TASK 7: DESIGN/UI/UX ANALYSIS (v2.0)")
+    logger.info("TASK 7: DESIGN/UI/UX ANALYSIS (v2.1 - Multi-Page)")
     logger.info("=" * 60)
 
     output_dir = OUTPUT_DIR / "visual_design"
@@ -1045,7 +1047,9 @@ async def run_design_analysis(
 
     result = {
         "target_site": None,
+        "multi_page_analysis": None,
         "competitor_analysis": None,
+        "pages_analyzed": 0,
         "success": False
     }
 
@@ -1053,19 +1057,42 @@ async def run_design_analysis(
     analyzer = DesignAnalyzer(firecrawl_client)
 
     try:
-        # Analyze target site
-        logger.info(f"Analyzing target site: {TARGET_BUSINESS['website']}")
-        target_analysis = await analyzer.analyze_full_design(
-            url=TARGET_BUSINESS['website'],
-            output_dir=output_dir / "target",
-            include_screenshots=True,
-            include_mobile=True
-        )
-        result["target_site"] = target_analysis
+        # Multi-page analysis if site URLs provided
+        if site_urls and len(site_urls) > 1:
+            logger.info(f"Running MULTI-PAGE design analysis on {len(site_urls)} pages...")
+            multi_page_result = await analyzer.analyze_site_design(
+                urls=site_urls,
+                output_dir=output_dir / "target",
+                include_screenshots=True,
+                include_mobile=True
+            )
+            result["multi_page_analysis"] = multi_page_result
+            result["pages_analyzed"] = multi_page_result.get("pages_analyzed", 0)
 
-        # Generate design brief
-        brief = analyzer.generate_design_brief(output_dir)
-        logger.info("Generated design brief")
+            # Also get first page as "target_site" for backward compatibility
+            if multi_page_result.get("pages"):
+                first_url = list(multi_page_result["pages"].keys())[0]
+                result["target_site"] = multi_page_result["pages"][first_url].get("analysis")
+
+            logger.info(f"Multi-page analysis complete: {result['pages_analyzed']} pages")
+            logger.info(f"Design consistency score: {multi_page_result.get('aggregated', {}).get('design_consistency', {}).get('overall_score', 0)}%")
+
+        else:
+            # Single-page fallback
+            target_url = site_urls[0] if site_urls else TARGET_BUSINESS['url']
+            logger.info(f"Running single-page design analysis on: {target_url}")
+            target_analysis = await analyzer.analyze_full_design(
+                url=target_url,
+                output_dir=output_dir / "target",
+                include_screenshots=True,
+                include_mobile=True
+            )
+            result["target_site"] = target_analysis
+            result["pages_analyzed"] = 1
+
+            # Generate design brief
+            brief = analyzer.generate_design_brief(output_dir)
+            logger.info("Generated design brief")
 
         # Analyze competitors if provided
         if competitor_urls:
@@ -1085,6 +1112,8 @@ async def run_design_analysis(
     except Exception as e:
         logger.error(f"Design analysis failed: {e}")
         result["error"] = str(e)
+        import traceback
+        logger.error(traceback.format_exc())
 
     # Always save results
     with open(output_dir / "design_analysis_summary.json", 'w') as f:
@@ -1416,8 +1445,30 @@ async def main(module: str = "all"):
     if module in ["all", "web"]:
         all_data["web_research"] = await run_web_research(firecrawl)
 
-    # Design/UI/UX Analysis (v2.0)
+    # Design/UI/UX Analysis (v2.1 - Multi-Page)
     if module in ["all", "design"]:
+        # Get discovered site URLs from website scrape (for multi-page analysis)
+        site_urls = []
+        if all_data.get("website", {}).get("pages"):
+            # Extract URLs from scraped pages
+            site_urls = [page.get("url") for page in all_data["website"]["pages"] if page.get("url")]
+            logger.info(f"Found {len(site_urls)} site URLs for multi-page design analysis")
+
+        # Fallback: try to get from structure.json if available
+        if not site_urls:
+            structure_file = OUTPUT_DIR / "site_content" / "structure.json"
+            if structure_file.exists():
+                with open(structure_file, 'r') as f:
+                    structure = json.load(f)
+                    # structure.json uses 'urls' field
+                    site_urls = structure.get("urls", [])[:15]  # Limit to 15 pages
+                    logger.info(f"Loaded {len(site_urls)} URLs from structure.json")
+
+        # If still no URLs, use target website as single page
+        if not site_urls:
+            site_urls = [TARGET_BUSINESS['url']]
+            logger.info("No discovered URLs, using homepage only")
+
         # Get competitor URLs from GBP "people_also_search" data
         competitor_urls = []
         if all_data.get("gbp_data", {}).get("profile", {}).get("people_also_search"):
@@ -1427,6 +1478,7 @@ async def main(module: str = "all"):
 
         all_data["design_analysis"] = await run_design_analysis(
             firecrawl,
+            site_urls=site_urls,
             competitor_urls=competitor_urls if competitor_urls else None
         )
 
@@ -1435,7 +1487,10 @@ async def main(module: str = "all"):
 
     # Summary
     elapsed = time.time() - start_time
-    design_status = "✓" if all_data.get("design_analysis", {}).get("success") else "○"
+    design_data = all_data.get("design_analysis", {})
+    design_status = "✓" if design_data.get("success") else "○"
+    design_pages = design_data.get("pages_analyzed", 0)
+    consistency_score = design_data.get("multi_page_analysis", {}).get("aggregated", {}).get("design_consistency", {}).get("overall_score", "N/A")
     print(f"""
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                           RESEARCH COMPLETE                                   ║
@@ -1444,18 +1499,19 @@ async def main(module: str = "all"):
 ║  Output Directory: {OUTPUT_DIR}
 ║
 ║  Data Collected:
-║    - Website pages: {all_data.get('website', {}).get('total_pages', 0)}
+║    - Website pages scraped: {all_data.get('website', {}).get('total_pages', 0)}
 ║    - Reviews: {all_data.get('gbp_data', {}).get('review_summary', {}).get('total_reviews', 0)}
 ║    - Competitors found: {len(all_data.get('grid_results', {}).get('all_competitors', {}))}
 ║    - Keywords researched: {len(all_data.get('keyword_research', {}).get('target_keywords', []))}
-║    - Design analysis: {design_status}
+║    - Design pages analyzed: {design_pages} {design_status}
+║    - Design consistency: {consistency_score}%
 ║
 ║  Reports Generated:
 ║    - full_report.json / full_report.md
 ║    - executive_summary.md
 ║    - seo_strategy.md
 ║    - website_redesign_brief.md
-║    - visual_design/design_brief.md (v2.0)
+║    - visual_design/multi_page_design_brief.md (v2.1)
 ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
     """)
@@ -1468,9 +1524,9 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='escape.exe Local SEO Research')
     parser.add_argument('--module',
-                        choices=['scrape', 'gbp', 'grid', 'competitors', 'keywords', 'web', 'all'],
+                        choices=['scrape', 'gbp', 'grid', 'competitors', 'keywords', 'web', 'design', 'all'],
                         default='all',
-                        help='Run specific module only')
+                        help='Run specific module only (design = v2.1 UI/UX analysis)')
     args = parser.parse_args()
 
     asyncio.run(main(module=args.module))

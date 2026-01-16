@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import base64
+import aiohttp
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -310,12 +311,15 @@ class DesignAnalyzer:
         try:
             desktop_result = await self.client.scrape(
                 url=url,
-                formats=['screenshot@fullPage'],
+                formats=['screenshot'],
                 wait_for=3000  # Wait for animations to load
             )
 
-            if desktop_result.get('success') and desktop_result.get('screenshot'):
-                screenshot_data = desktop_result['screenshot']
+            # Screenshot is in data.screenshot, not top-level
+            data = desktop_result.get('data', {})
+            screenshot_data = data.get('screenshot') if isinstance(data, dict) else None
+
+            if desktop_result.get('success') and screenshot_data:
 
                 # Save screenshot
                 desktop_path = output_dir / "desktop_fullpage.png"
@@ -324,19 +328,30 @@ class DesignAnalyzer:
                     img_data = screenshot_data.split(',')[1]
                     with open(desktop_path, 'wb') as f:
                         f.write(base64.b64decode(img_data))
+                elif screenshot_data.startswith('http'):
+                    # URL - download the image
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(screenshot_data) as resp:
+                            if resp.status == 200:
+                                with open(desktop_path, 'wb') as f:
+                                    f.write(await resp.read())
+                            else:
+                                logger.warning(f"    Failed to download screenshot: HTTP {resp.status}")
+                                desktop_path = None
                 else:
-                    # URL or raw data
-                    with open(desktop_path, 'w') as f:
-                        f.write(screenshot_data)
+                    # Raw data
+                    with open(desktop_path, 'wb') as f:
+                        f.write(screenshot_data.encode() if isinstance(screenshot_data, str) else screenshot_data)
 
-                result["desktop"] = {
-                    "path": str(desktop_path),
-                    "viewport": "desktop",
-                    "full_page": True
-                }
-                logger.info(f"    Saved: {desktop_path}")
+                if desktop_path:
+                    result["desktop"] = {
+                        "path": str(desktop_path),
+                        "viewport": "desktop",
+                        "full_page": True
+                    }
+                    logger.info(f"    Saved: {desktop_path}")
             else:
-                logger.warning(f"    Desktop screenshot not captured. Response keys: {desktop_result.keys()}")
+                logger.warning(f"    Desktop screenshot not captured. Response keys: {desktop_result.keys()}, data keys: {data.keys() if isinstance(data, dict) else type(data)}")
 
         except Exception as e:
             logger.error(f"    Desktop screenshot failed: {e}")
@@ -347,31 +362,46 @@ class DesignAnalyzer:
             try:
                 mobile_result = await self.client.scrape(
                     url=url,
-                    formats=['screenshot@fullPage'],
+                    formats=['screenshot'],
                     mobile=True,
                     wait_for=3000
                 )
 
-                if mobile_result.get('success') and mobile_result.get('screenshot'):
-                    screenshot_data = mobile_result['screenshot']
+                # Screenshot is in data.screenshot, not top-level
+                data = mobile_result.get('data', {})
+                screenshot_data = data.get('screenshot') if isinstance(data, dict) else None
+
+                if mobile_result.get('success') and screenshot_data:
 
                     mobile_path = output_dir / "mobile_fullpage.png"
                     if screenshot_data.startswith('data:image'):
                         img_data = screenshot_data.split(',')[1]
                         with open(mobile_path, 'wb') as f:
                             f.write(base64.b64decode(img_data))
+                    elif screenshot_data.startswith('http'):
+                        # URL - download the image
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(screenshot_data) as resp:
+                                if resp.status == 200:
+                                    with open(mobile_path, 'wb') as f:
+                                        f.write(await resp.read())
+                                else:
+                                    logger.warning(f"    Failed to download mobile screenshot: HTTP {resp.status}")
+                                    mobile_path = None
                     else:
-                        with open(mobile_path, 'w') as f:
-                            f.write(screenshot_data)
+                        # Raw data
+                        with open(mobile_path, 'wb') as f:
+                            f.write(screenshot_data.encode() if isinstance(screenshot_data, str) else screenshot_data)
 
-                    result["mobile"] = {
-                        "path": str(mobile_path),
-                        "viewport": "mobile",
-                        "full_page": True
-                    }
-                    logger.info(f"    Saved: {mobile_path}")
+                    if mobile_path:
+                        result["mobile"] = {
+                            "path": str(mobile_path),
+                            "viewport": "mobile",
+                            "full_page": True
+                        }
+                        logger.info(f"    Saved: {mobile_path}")
                 else:
-                    logger.warning(f"    Mobile screenshot not captured")
+                    logger.warning(f"    Mobile screenshot not captured. Data keys: {data.keys() if isinstance(data, dict) else type(data)}")
 
             except Exception as e:
                 logger.error(f"    Mobile screenshot failed: {e}")
@@ -406,12 +436,17 @@ class DesignAnalyzer:
 
             if result.get('success') and result.get('data'):
                 data = result['data']
+                logger.debug(f"Extract raw result keys: {result.keys()}")
+                logger.debug(f"Extract data type: {type(data)}, value: {str(data)[:500]}")
                 # Handle nested structure
                 if isinstance(data, list) and len(data) > 0:
-                    return data[0].get('extract', data[0])
-                return data
+                    extracted = data[0].get('extract', data[0])
+                    if extracted:
+                        return extracted
+                elif isinstance(data, dict):
+                    return data
 
-            logger.warning(f"Design system extraction returned no data")
+            logger.warning(f"Design system extraction returned no data. Result: {str(result)[:300]}")
             return {}
 
         except Exception as e:
@@ -447,10 +482,13 @@ class DesignAnalyzer:
             if result.get('success') and result.get('data'):
                 data = result['data']
                 if isinstance(data, list) and len(data) > 0:
-                    return data[0].get('extract', data[0])
-                return data
+                    extracted = data[0].get('extract', data[0])
+                    if extracted:
+                        return extracted
+                elif isinstance(data, dict):
+                    return data
 
-            logger.warning(f"Component extraction returned no data")
+            logger.warning(f"Component extraction returned no data. Result: {str(result)[:300]}")
             return {}
 
         except Exception as e:
@@ -841,3 +879,309 @@ class DesignAnalyzer:
             f.write(brief)
 
         return brief
+
+    async def analyze_site_design(
+        self,
+        urls: List[str],
+        output_dir: Path,
+        include_screenshots: bool = True,
+        include_mobile: bool = True,
+        max_concurrent: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Analyze design across multiple pages of a site.
+
+        Args:
+            urls: List of URLs to analyze (from site map)
+            output_dir: Directory to save outputs
+            include_screenshots: Whether to capture screenshots
+            include_mobile: Whether to include mobile viewport
+            max_concurrent: Max concurrent page analyses (rate limiting)
+
+        Returns:
+            Aggregated design analysis with cross-page consistency scoring
+        """
+        logger.info("=" * 60)
+        logger.info(f"MULTI-PAGE DESIGN ANALYSIS ({len(urls)} pages)")
+        logger.info("=" * 60)
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        pages_dir = output_dir / "pages"
+        pages_dir.mkdir(exist_ok=True)
+
+        result = {
+            "analyzed_at": datetime.now().isoformat(),
+            "total_pages": len(urls),
+            "pages_analyzed": 0,
+            "pages": {},
+            "aggregated": {
+                "design_consistency": {},
+                "color_palettes": [],
+                "typography_fonts": [],
+                "cta_patterns": [],
+                "psychology_scores": [],
+                "common_components": []
+            },
+            "cross_page_insights": [],
+            "success": False
+        }
+
+        # Analyze pages with rate limiting
+        import re
+        from urllib.parse import urlparse
+
+        for i, url in enumerate(urls):
+            logger.info(f"\n[{i+1}/{len(urls)}] Analyzing: {url}")
+
+            # Create safe directory name from URL
+            parsed = urlparse(url)
+            page_name = parsed.path.strip('/').replace('/', '_') or 'homepage'
+            page_name = re.sub(r'[^\w\-]', '_', page_name)
+            page_dir = pages_dir / page_name
+
+            try:
+                analysis = await self.analyze_full_design(
+                    url=url,
+                    output_dir=page_dir,
+                    include_screenshots=include_screenshots,
+                    include_mobile=include_mobile
+                )
+
+                result["pages"][url] = {
+                    "page_name": page_name,
+                    "output_dir": str(page_dir),
+                    "analysis": analysis,
+                    "success": True
+                }
+                result["pages_analyzed"] += 1
+
+                # Aggregate data for cross-page analysis
+                self._aggregate_page_data(result["aggregated"], analysis, url)
+
+            except Exception as e:
+                logger.error(f"Failed to analyze {url}: {e}")
+                result["pages"][url] = {
+                    "page_name": page_name,
+                    "error": str(e),
+                    "success": False
+                }
+
+            # Rate limiting between pages
+            if i < len(urls) - 1:
+                await asyncio.sleep(1.5)
+
+        # Generate cross-page insights
+        result["cross_page_insights"] = self._generate_cross_page_insights(result["aggregated"])
+        result["aggregated"]["design_consistency"] = self._calculate_design_consistency(result["aggregated"])
+
+        # Save aggregated results
+        aggregated_dir = output_dir / "aggregated"
+        aggregated_dir.mkdir(exist_ok=True)
+
+        with open(aggregated_dir / "design_consistency.json", 'w') as f:
+            json.dump(result["aggregated"]["design_consistency"], f, indent=2, default=str)
+
+        with open(aggregated_dir / "cta_patterns.json", 'w') as f:
+            json.dump(result["aggregated"]["cta_patterns"], f, indent=2, default=str)
+
+        with open(aggregated_dir / "psychology_mapping.json", 'w') as f:
+            json.dump(result["aggregated"]["psychology_scores"], f, indent=2, default=str)
+
+        # Save full multi-page analysis
+        with open(output_dir / "multi_page_analysis.json", 'w') as f:
+            json.dump(result, f, indent=2, default=str)
+
+        # Generate multi-page design brief
+        self._generate_multi_page_brief(result, output_dir)
+
+        result["success"] = result["pages_analyzed"] > 0
+        logger.info(f"\nMulti-page analysis complete: {result['pages_analyzed']}/{len(urls)} pages analyzed")
+
+        return result
+
+    def _aggregate_page_data(self, aggregated: Dict, analysis: Dict, url: str):
+        """Aggregate data from a single page analysis into overall metrics."""
+
+        # Color palettes
+        colors = analysis.get("design_system", {}).get("color_palette", {})
+        if colors:
+            aggregated["color_palettes"].append({
+                "url": url,
+                "colors": colors
+            })
+
+        # Typography
+        typography = analysis.get("design_system", {}).get("typography", {})
+        if typography:
+            aggregated["typography_fonts"].append({
+                "url": url,
+                "heading_font": typography.get("heading_font"),
+                "body_font": typography.get("body_font")
+            })
+
+        # CTAs
+        ctas = analysis.get("ctas", {}).get("ctas", [])
+        for cta in ctas:
+            aggregated["cta_patterns"].append({
+                "url": url,
+                "text": cta.get("text"),
+                "type": cta.get("type"),
+                "position": cta.get("position"),
+                "action": cta.get("action")
+            })
+
+        # Psychology
+        psych = analysis.get("psychology", {})
+        if psych:
+            aggregated["psychology_scores"].append({
+                "url": url,
+                "cognitive_load": psych.get("cognitive_load", {}).get("assessment"),
+                "visual_hierarchy_score": psych.get("cognitive_load", {}).get("visual_hierarchy_score"),
+                "trust_signals_count": len(psych.get("trust_signals", [])),
+                "emotional_triggers_count": len(psych.get("emotional_triggers", []))
+            })
+
+        # Components
+        components = analysis.get("components", {})
+        if components:
+            aggregated["common_components"].append({
+                "url": url,
+                "has_sticky_nav": components.get("navigation", {}).get("type") == "sticky",
+                "hero_type": components.get("hero_section", {}).get("type"),
+                "section_count": len(components.get("sections", []))
+            })
+
+    def _calculate_design_consistency(self, aggregated: Dict) -> Dict:
+        """Calculate design consistency scores across pages."""
+        consistency = {
+            "color_consistency": 0,
+            "typography_consistency": 0,
+            "navigation_consistency": 0,
+            "overall_score": 0,
+            "notes": []
+        }
+
+        # Check color consistency
+        if aggregated["color_palettes"]:
+            primary_colors = [p["colors"].get("primary") for p in aggregated["color_palettes"] if p["colors"].get("primary")]
+            if primary_colors:
+                unique_primaries = len(set(primary_colors))
+                consistency["color_consistency"] = round((1 - (unique_primaries - 1) / len(primary_colors)) * 100, 1)
+                if unique_primaries > 1:
+                    consistency["notes"].append(f"Primary color varies across {unique_primaries} variations")
+
+        # Check typography consistency
+        if aggregated["typography_fonts"]:
+            heading_fonts = [t["heading_font"] for t in aggregated["typography_fonts"] if t["heading_font"]]
+            if heading_fonts:
+                unique_headings = len(set(heading_fonts))
+                consistency["typography_consistency"] = round((1 - (unique_headings - 1) / len(heading_fonts)) * 100, 1)
+                if unique_headings > 1:
+                    consistency["notes"].append(f"Heading font varies: {set(heading_fonts)}")
+
+        # Check navigation consistency
+        if aggregated["common_components"]:
+            has_sticky = [c["has_sticky_nav"] for c in aggregated["common_components"]]
+            sticky_consistency = has_sticky.count(True) / len(has_sticky) if has_sticky else 0
+            consistency["navigation_consistency"] = round(max(sticky_consistency, 1 - sticky_consistency) * 100, 1)
+
+        # Overall score
+        scores = [consistency["color_consistency"], consistency["typography_consistency"], consistency["navigation_consistency"]]
+        valid_scores = [s for s in scores if s > 0]
+        consistency["overall_score"] = round(sum(valid_scores) / len(valid_scores), 1) if valid_scores else 0
+
+        return consistency
+
+    def _generate_cross_page_insights(self, aggregated: Dict) -> List[str]:
+        """Generate insights from cross-page analysis."""
+        insights = []
+
+        # CTA analysis
+        if aggregated["cta_patterns"]:
+            cta_texts = [c["text"] for c in aggregated["cta_patterns"] if c["text"]]
+            unique_ctas = set(cta_texts)
+            if len(unique_ctas) <= 3:
+                insights.append(f"Consistent CTA messaging across pages: {', '.join(unique_ctas)}")
+            else:
+                insights.append(f"Varied CTA messaging ({len(unique_ctas)} unique CTAs) - consider consolidation")
+
+        # Psychology analysis
+        if aggregated["psychology_scores"]:
+            avg_hierarchy = sum(p["visual_hierarchy_score"] or 0 for p in aggregated["psychology_scores"]) / len(aggregated["psychology_scores"])
+            if avg_hierarchy >= 7:
+                insights.append(f"Strong visual hierarchy (avg {avg_hierarchy:.1f}/10)")
+            elif avg_hierarchy <= 4:
+                insights.append(f"Weak visual hierarchy (avg {avg_hierarchy:.1f}/10) - improve layout clarity")
+
+            cognitive_loads = [p["cognitive_load"] for p in aggregated["psychology_scores"] if p["cognitive_load"]]
+            if cognitive_loads.count("high") > len(cognitive_loads) / 2:
+                insights.append("Most pages have high cognitive load - simplify design")
+
+        # Component analysis
+        if aggregated["common_components"]:
+            hero_types = [c["hero_type"] for c in aggregated["common_components"] if c["hero_type"]]
+            if hero_types:
+                most_common_hero = max(set(hero_types), key=hero_types.count)
+                insights.append(f"Dominant hero pattern: {most_common_hero}")
+
+        return insights
+
+    def _generate_multi_page_brief(self, result: Dict, output_dir: Path):
+        """Generate comprehensive multi-page design brief."""
+        brief = f"""# Multi-Page Design Analysis Brief
+
+*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*
+*Pages Analyzed: {result['pages_analyzed']}/{result['total_pages']}*
+
+## Design Consistency Score
+
+**Overall: {result['aggregated']['design_consistency'].get('overall_score', 0)}%**
+
+- Color Consistency: {result['aggregated']['design_consistency'].get('color_consistency', 0)}%
+- Typography Consistency: {result['aggregated']['design_consistency'].get('typography_consistency', 0)}%
+- Navigation Consistency: {result['aggregated']['design_consistency'].get('navigation_consistency', 0)}%
+
+### Notes
+"""
+        for note in result['aggregated']['design_consistency'].get('notes', []):
+            brief += f"- {note}\n"
+
+        brief += f"""
+## Cross-Page Insights
+
+"""
+        for insight in result.get('cross_page_insights', []):
+            brief += f"- {insight}\n"
+
+        brief += f"""
+## CTA Patterns Across Site
+
+| Page | CTA Text | Position | Action |
+|------|----------|----------|--------|
+"""
+        for cta in result['aggregated']['cta_patterns'][:15]:
+            page = cta['url'].split('/')[-1] or 'homepage'
+            brief += f"| {page[:20]} | {cta.get('text', 'N/A')[:25]} | {cta.get('position', 'N/A')} | {cta.get('action', 'N/A')} |\n"
+
+        brief += f"""
+## Psychology Scores by Page
+
+| Page | Cognitive Load | Visual Hierarchy | Trust Signals |
+|------|----------------|------------------|---------------|
+"""
+        for psych in result['aggregated']['psychology_scores']:
+            page = psych['url'].split('/')[-1] or 'homepage'
+            brief += f"| {page[:20]} | {psych.get('cognitive_load', 'N/A')} | {psych.get('visual_hierarchy_score', 'N/A')}/10 | {psych.get('trust_signals_count', 0)} |\n"
+
+        brief += f"""
+## Pages Analyzed
+
+"""
+        for url, data in result['pages'].items():
+            status = "✓" if data.get('success') else "✗"
+            brief += f"- [{status}] {url}\n"
+
+        with open(output_dir / "multi_page_design_brief.md", 'w') as f:
+            f.write(brief)
+
+        logger.info(f"Generated multi-page brief: {output_dir / 'multi_page_design_brief.md'}")

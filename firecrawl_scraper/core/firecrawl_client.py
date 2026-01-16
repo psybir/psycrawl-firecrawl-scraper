@@ -632,7 +632,9 @@ class EnhancedFirecrawlClient:
         prompt: Optional[str] = None,
         schema: Optional[Union[Dict, Any]] = None,
         system_prompt: Optional[str] = None,
-        allow_external_links: bool = False
+        allow_external_links: bool = False,
+        poll_interval: float = 2.0,
+        max_poll_time: float = 60.0
     ) -> Dict:
         """
         AI-powered structured extraction with v2 API
@@ -643,6 +645,8 @@ class EnhancedFirecrawlClient:
             schema: JSON Schema or Pydantic model for structured data
             system_prompt: Custom system prompt for LLM
             allow_external_links: Allow following external links
+            poll_interval: Seconds between status checks
+            max_poll_time: Maximum seconds to wait for completion
 
         Returns:
             Dict with 'success', 'data' (extracted structured data)
@@ -671,18 +675,49 @@ class EnhancedFirecrawlClient:
         if system_prompt:
             payload['systemPrompt'] = system_prompt
 
+        # Initial POST request - returns job ID
         result = await self._execute_with_retry(
             endpoint='/extract',
             payload=payload,
             method='POST'
         )
 
-        if result.get('success'):
-            # Extract is token-based
-            credits = len(urls) * 5
-            result['creditsUsed'] = credits
-            self.stats.credits_by_endpoint['extract'] += credits
-            self.stats.total_credits_used += credits
+        # If we got a job ID, poll for completion
+        if result.get('success') and result.get('id') and not result.get('data'):
+            job_id = result['id']
+            logger.debug(f"Extract job started: {job_id}")
+
+            elapsed = 0.0
+            while elapsed < max_poll_time:
+                await asyncio.sleep(poll_interval)
+                elapsed += poll_interval
+
+                status = await self._execute_with_retry(
+                    endpoint=f'/extract/{job_id}',
+                    payload={},
+                    method='GET'
+                )
+
+                if status.get('status') == 'completed':
+                    # Update result with extracted data
+                    result['data'] = status.get('data')
+                    result['status'] = 'completed'
+                    if status.get('creditsUsed'):
+                        result['creditsUsed'] = status['creditsUsed']
+                    logger.debug(f"Extract completed: {job_id}")
+                    break
+                elif status.get('status') == 'failed':
+                    result['success'] = False
+                    result['error'] = status.get('error', 'Extraction failed')
+                    break
+
+            if elapsed >= max_poll_time:
+                result['success'] = False
+                result['error'] = 'Extract polling timeout'
+
+        if result.get('success') and result.get('creditsUsed'):
+            self.stats.credits_by_endpoint['extract'] += result['creditsUsed']
+            self.stats.total_credits_used += result['creditsUsed']
 
         return result
 
