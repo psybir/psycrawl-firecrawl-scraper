@@ -383,47 +383,80 @@ async def get_gbp_data(client: DataForSEOClient) -> Dict:
         await asyncio.sleep(0.5)
 
         # Get reviews - fetch up to 500 to capture all 400+
+        # Use place_id from profile if available for more accurate results
         logger.info("Fetching reviews (targeting 400+)...")
+
+        # Try with profile title if we have it (more specific search)
+        review_search_term = search_term
+        if result["profile"]:
+            profile_title = result["profile"].get('title', '')
+            if profile_title:
+                review_search_term = profile_title
+                logger.info(f"Using profile title for review search: {review_search_term}")
+
         reviews_result = await client.business_data_google_reviews(
-            keyword=search_term,
+            keyword=review_search_term,
             location_name=location,
             depth=500,  # Get more to ensure we capture all 400+
             sort_by="newest"
         )
 
+        # Debug: Log the API response structure
         if reviews_result.get('success'):
+            logger.info(f"Reviews API returned success=True")
             for task in reviews_result.get('data') or []:
                 for res in task.get('result') or []:
                     items = res.get('items') or []
-                    result["reviews"] = items
-                    logger.info(f"Found {len(items)} reviews")
+                    reviews_info = res.get('reviews_count', 0)
+                    logger.info(f"Response contains {len(items)} review items, reviews_count={reviews_info}")
+                    if items:
+                        result["reviews"] = items
+                        logger.info(f"Found {len(items)} reviews")
+                    else:
+                        # Check if reviews are nested differently
+                        logger.warning(f"No items found in response. Result keys: {res.keys()}")
+        else:
+            logger.warning(f"Reviews API returned success=False: {reviews_result.get('error', 'Unknown error')}")
 
-            # Analyze reviews
-            if result["reviews"]:
-                ratings = [r.get('rating', {}).get('value', 0) for r in result["reviews"]]
+        # Analyze reviews if we have them
+        if result["reviews"]:
+            ratings = [r.get('rating', {}).get('value', 0) for r in result["reviews"]]
+            result["review_summary"] = {
+                "total_reviews": len(result["reviews"]),
+                "average_rating": sum(ratings) / len(ratings) if ratings else 0,
+                "rating_distribution": {
+                    "5_star": sum(1 for r in ratings if r == 5),
+                    "4_star": sum(1 for r in ratings if r == 4),
+                    "3_star": sum(1 for r in ratings if r == 3),
+                    "2_star": sum(1 for r in ratings if r == 2),
+                    "1_star": sum(1 for r in ratings if r == 1)
+                },
+                # Extract common themes from review text
+                "sample_positive": [
+                    r.get('review_text', '')[:200]
+                    for r in result["reviews"][:5]
+                    if r.get('rating', {}).get('value', 0) >= 4
+                ]
+            }
+        else:
+            # Create summary from GBP profile if no reviews fetched
+            logger.warning("No reviews fetched from API. Using profile data for summary.")
+            if result["profile"] and result["profile"].get("rating"):
                 result["review_summary"] = {
-                    "total_reviews": len(result["reviews"]),
-                    "average_rating": sum(ratings) / len(ratings) if ratings else 0,
-                    "rating_distribution": {
-                        "5_star": sum(1 for r in ratings if r == 5),
-                        "4_star": sum(1 for r in ratings if r == 4),
-                        "3_star": sum(1 for r in ratings if r == 3),
-                        "2_star": sum(1 for r in ratings if r == 2),
-                        "1_star": sum(1 for r in ratings if r == 1)
-                    },
-                    # Extract common themes from review text
-                    "sample_positive": [
-                        r.get('review_text', '')[:200]
-                        for r in result["reviews"][:5]
-                        if r.get('rating', {}).get('value', 0) >= 4
-                    ]
+                    "total_reviews": result["profile"].get("rating", {}).get("votes_count", 0),
+                    "average_rating": result["profile"].get("rating", {}).get("value", 0),
+                    "rating_distribution": result["profile"].get("rating_distribution", {}),
+                    "source": "gbp_profile"
                 }
 
-            with open(output_dir / "reviews.json", 'w') as f:
-                json.dump(result["reviews"], f, indent=2, default=str)
+        # Always write the files, even if empty
+        with open(output_dir / "reviews.json", 'w') as f:
+            json.dump(result["reviews"], f, indent=2, default=str)
+        logger.info(f"Wrote reviews.json with {len(result['reviews'])} reviews")
 
-            with open(output_dir / "review_summary.json", 'w') as f:
-                json.dump(result["review_summary"], f, indent=2, default=str)
+        with open(output_dir / "review_summary.json", 'w') as f:
+            json.dump(result["review_summary"], f, indent=2, default=str)
+        logger.info(f"Wrote review_summary.json")
 
         await asyncio.sleep(0.5)
 
@@ -873,7 +906,15 @@ async def run_keyword_research(client: DataForSEOClient, keywords: List[str]) ->
             await asyncio.sleep(0.5)
 
         result["success"] = True
+        logger.info("Keyword research API calls completed successfully")
 
+    except Exception as e:
+        logger.error(f"Keyword research failed: {e}")
+        logger.error(f"Partial data collected - target_keywords: {len(result['target_keywords'])}, keyword_ideas: {len(result['keyword_ideas'])}")
+        result.update(create_error_response(e, "run_keyword_research"))
+
+    # Always process and save results, even if partial
+    finally:
         # Sort by search volume
         result["target_keywords"] = sorted(
             result["target_keywords"],
@@ -894,24 +935,25 @@ async def run_keyword_research(client: DataForSEOClient, keywords: List[str]) ->
             and (kw.get("competition_level") or "HIGH") in ["LOW", "MEDIUM"]
         ]
 
-        # Save results
+        # Always save results (even if empty/partial)
+        logger.info(f"Saving keyword results to {output_dir}...")
+
         with open(output_dir / "target_keywords.json", 'w') as f:
             json.dump(result["target_keywords"], f, indent=2)
+        logger.info(f"  Wrote target_keywords.json ({len(result['target_keywords'])} keywords)")
 
         with open(output_dir / "keyword_ideas.json", 'w') as f:
             json.dump(result["keyword_ideas"], f, indent=2)
+        logger.info(f"  Wrote keyword_ideas.json ({len(result['keyword_ideas'])} ideas)")
 
         with open(output_dir / "high_opportunity_keywords.json", 'w') as f:
             json.dump(result["high_opportunity"], f, indent=2)
+        logger.info(f"  Wrote high_opportunity_keywords.json ({len(result['high_opportunity'])} opportunities)")
 
         logger.info(f"Keyword research complete!")
-        logger.info(f"Target keywords: {len(result['target_keywords'])}")
-        logger.info(f"Keyword ideas: {len(result['keyword_ideas'])}")
-        logger.info(f"High opportunity: {len(result['high_opportunity'])}")
-
-    except Exception as e:
-        logger.error(f"Keyword research failed: {e}")
-        result.update(create_error_response(e, "run_keyword_research"))
+        logger.info(f"  Target keywords: {len(result['target_keywords'])}")
+        logger.info(f"  Keyword ideas: {len(result['keyword_ideas'])}")
+        logger.info(f"  High opportunity: {len(result['high_opportunity'])}")
 
     return result
 
