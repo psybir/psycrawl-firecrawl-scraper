@@ -189,7 +189,7 @@ Use For: Content analysis, trend monitoring, research
 
 ```bash
 # Clone the repository
-git clone https://github.com/nvc5221/psycrawl-firecrawl-scraper.git
+git clone https://github.com/psybir/psycrawl-firecrawl-scraper.git
 cd psycrawl-firecrawl-scraper
 
 # Install dependencies
@@ -315,6 +315,88 @@ python examples/competitor_analysis_example.py
 
 # Keyword research
 python examples/keyword_research_example.py
+```
+
+### 5. Local SEO Research (NEW)
+
+Complete local business market analysis with grid-based competitor discovery:
+
+```python
+import asyncio
+from firecrawl_scraper import EnhancedFirecrawlClient, Config
+from firecrawl_scraper.core.dataforseo_client import DataForSEOClient
+
+async def main():
+    # Initialize clients
+    firecrawl = EnhancedFirecrawlClient(Config.API_KEY)
+    dataforseo = DataForSEOClient(Config.DATAFORSEO_LOGIN, Config.DATAFORSEO_PASSWORD)
+
+    # 1. Scrape target website
+    result = await firecrawl.batch_scrape(
+        urls=['https://example.com'],
+        formats=['markdown', 'html']
+    )
+
+    # 2. Get Google Business Profile
+    gbp = await dataforseo.business_data_google_my_business_info(
+        keyword="Business Name City State",
+        location_name="City,State,United States"
+    )
+
+    # 3. Run local search grid analysis (100 geographic points)
+    grid = dataforseo.build_geo_grid(
+        center_lat=40.6259,
+        center_lng=-75.3705,
+        grid_size=10,       # 10x10 = 100 points
+        spacing_miles=6.0   # ~60 mile coverage
+    )
+
+    grid_results = await dataforseo.query_local_search_grid(
+        keyword="your service near me",
+        grid_coords=grid,
+        depth=20
+    )
+
+    print(f"Competitors found: {grid_results['total_competitors_found']}")
+
+asyncio.run(main())
+```
+
+**Run Local SEO Research:**
+```bash
+# Full local SEO research for a business
+python examples/escape_exe_research.py
+
+# Or run specific modules only
+python examples/escape_exe_research.py --module scrape
+python examples/escape_exe_research.py --module gbp
+python examples/escape_exe_research.py --module grid
+python examples/escape_exe_research.py --module keywords
+```
+
+**Output Structure:**
+```
+data/your_research/
+├── site_content/           # Scraped website pages
+│   ├── pages/              # Markdown content
+│   ├── structure.json      # Site structure
+│   └── media_inventory.json
+├── local_seo/
+│   ├── gbp_profile.json    # Google Business Profile
+│   ├── reviews.json        # Customer reviews
+│   ├── grid_results.json   # Geographic visibility data
+│   └── grid_heatmap.json   # Visualization-ready heatmap
+├── competitors/
+│   ├── competitor_list.json
+│   └── competitor_profiles/
+├── keywords/
+│   ├── target_keywords.json
+│   └── keyword_ideas.json
+└── reports/
+    ├── full_report.json
+    ├── executive_summary.md
+    ├── seo_strategy.md
+    └── website_redesign_brief.md
 ```
 
 ## 📊 Real Production Results

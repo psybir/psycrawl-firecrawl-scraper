@@ -22,6 +22,7 @@ Usage:
 import os
 import base64
 import asyncio
+import json
 import logging
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
@@ -171,7 +172,16 @@ class DataForSEOClient:
 
     async def _handle_response(self, response, cost_key: Optional[str] = None) -> Dict:
         """Handle API response"""
-        data = await response.json()
+        try:
+            data = await response.json()
+        except (aiohttp.ContentTypeError, json.JSONDecodeError) as e:
+            self.stats.failed_requests += 1
+            return {
+                'success': False,
+                'error': f'Invalid JSON response: {str(e)}',
+                'error_type': type(e).__name__,
+                'status_code': response.status
+            }
 
         if response.status == 200:
             self.stats.successful_requests += 1
@@ -278,6 +288,351 @@ class DataForSEOClient:
             '/serp/bing/organic/live/advanced',
             data=data,
             cost_key='serp_bing_organic'
+        )
+
+    # ========================================================================
+    # LOCAL SEO - Google Maps with Coordinates (for Grid Tracking)
+    # ========================================================================
+
+    async def serp_google_maps_by_coordinates(
+        self,
+        keyword: str,
+        latitude: float,
+        longitude: float,
+        zoom: int = 17,
+        language_code: str = "en",
+        depth: int = 20
+    ) -> Dict:
+        """
+        Get Google Maps results at specific coordinates.
+        Essential for local search grid analysis.
+
+        Args:
+            keyword: Search keyword
+            latitude: Latitude coordinate (7 decimal places)
+            longitude: Longitude coordinate (7 decimal places)
+            zoom: Map zoom level (3-21, 17 recommended for local)
+            language_code: Language code
+            depth: Number of results to return
+
+        Returns:
+            Dict with local pack results at the specified location
+        """
+        # Format: "latitude,longitude,zoom"
+        location_coordinate = f"{latitude:.7f},{longitude:.7f},{zoom}"
+
+        data = [{
+            "keyword": keyword,
+            "location_coordinate": location_coordinate,
+            "language_code": language_code,
+            "depth": depth
+        }]
+
+        return await self._request(
+            '/serp/google/maps/live/advanced',
+            data=data,
+            cost_key='serp_google_maps'
+        )
+
+    def build_geo_grid(
+        self,
+        center_lat: float,
+        center_lng: float,
+        grid_size: int = 8,
+        spacing_miles: float = 2.0
+    ) -> list:
+        """
+        Build a coordinate grid for local search analysis.
+
+        Args:
+            center_lat: Center latitude
+            center_lng: Center longitude
+            grid_size: Grid size (e.g., 8 for 8x8 = 64 points)
+            spacing_miles: Distance between grid points in miles
+
+        Returns:
+            List of (lat, lng) tuples forming the grid
+        """
+        import math
+
+        # Convert miles to degrees (approximate)
+        # 1 degree latitude = ~69 miles
+        # 1 degree longitude = ~69 * cos(latitude) miles
+        lat_spacing = spacing_miles / 69.0
+        lng_spacing = spacing_miles / (69.0 * math.cos(math.radians(center_lat)))
+
+        # Calculate grid bounds
+        half_grid = (grid_size - 1) / 2
+        start_lat = center_lat + (half_grid * lat_spacing)
+        start_lng = center_lng - (half_grid * lng_spacing)
+
+        # Generate grid points
+        grid = []
+        for row in range(grid_size):
+            for col in range(grid_size):
+                lat = start_lat - (row * lat_spacing)
+                lng = start_lng + (col * lng_spacing)
+                grid.append((round(lat, 7), round(lng, 7)))
+
+        return grid
+
+    async def query_local_search_grid(
+        self,
+        keyword: str,
+        grid_coords: list,
+        language_code: str = "en",
+        depth: int = 20,
+        delay_between_requests: float = 0.1
+    ) -> Dict:
+        """
+        Query Google Maps for entire grid.
+
+        Args:
+            keyword: Search keyword
+            grid_coords: List of (lat, lng) tuples from build_geo_grid
+            language_code: Language code
+            depth: Results per grid point
+            delay_between_requests: Delay between API calls
+
+        Returns:
+            Dict with grid_results (list), heatmap_data, and all competitors found
+        """
+        results = []
+        all_competitors = {}  # Track all businesses found and their positions
+
+        logger.info(f"Querying local search grid: {len(grid_coords)} points for '{keyword}'")
+
+        for i, (lat, lng) in enumerate(grid_coords):
+            try:
+                response = await self.serp_google_maps_by_coordinates(
+                    keyword=keyword,
+                    latitude=lat,
+                    longitude=lng,
+                    language_code=language_code,
+                    depth=depth
+                )
+
+                grid_point_result = {
+                    'lat': lat,
+                    'lng': lng,
+                    'grid_index': i,
+                    'success': response.get('success', False),
+                    'rankings': []
+                }
+
+                if response.get('success'):
+                    # Extract rankings from response (null-safe iteration)
+                    tasks = response.get('data') or []
+                    for task in tasks:
+                        task_results = task.get('result') or []
+                        for result_set in task_results:
+                            items = result_set.get('items') or []
+                            for rank, item in enumerate(items, 1):
+                                if item.get('type') in ['maps_search', 'maps_paid']:
+                                    business_name = item.get('title', 'Unknown')
+                                    rating_data = item.get('rating') or {}
+                                    grid_point_result['rankings'].append({
+                                        'position': rank,
+                                        'title': business_name,
+                                        'rating': rating_data.get('value'),
+                                        'reviews_count': rating_data.get('votes_count'),
+                                        'address': item.get('address'),
+                                        'domain': item.get('domain'),
+                                        'phone': item.get('phone'),
+                                        'place_id': item.get('place_id'),
+                                        'cid': item.get('cid'),
+                                        'is_paid': item.get('type') == 'maps_paid'
+                                    })
+
+                                    # Track competitor across all grid points
+                                    if business_name not in all_competitors:
+                                        all_competitors[business_name] = {
+                                            'name': business_name,
+                                            'positions': [],
+                                            'avg_position': 0,
+                                            'grid_presence': 0,
+                                            'rating': rating_data.get('value'),
+                                            'reviews_count': rating_data.get('votes_count'),
+                                            'domain': item.get('domain'),
+                                            'phone': item.get('phone')
+                                        }
+                                    all_competitors[business_name]['positions'].append({
+                                        'grid_index': i,
+                                        'lat': lat,
+                                        'lng': lng,
+                                        'position': rank
+                                    })
+
+                results.append(grid_point_result)
+
+                if delay_between_requests > 0:
+                    await asyncio.sleep(delay_between_requests)
+
+                # Progress logging
+                if (i + 1) % 10 == 0:
+                    logger.info(f"Grid progress: {i + 1}/{len(grid_coords)} points queried")
+
+            except Exception as e:
+                logger.error(f"Grid point {i} ({lat}, {lng}) failed: {e}")
+                results.append({
+                    'lat': lat,
+                    'lng': lng,
+                    'grid_index': i,
+                    'success': False,
+                    'error': str(e),
+                    'rankings': []
+                })
+
+        # Calculate competitor statistics
+        for name, data in all_competitors.items():
+            if data['positions']:
+                data['grid_presence'] = len(data['positions'])
+                # Filter out None positions before calculating average
+                positions = [p.get('position', 0) for p in data['positions'] if p.get('position') is not None]
+                data['avg_position'] = sum(positions) / len(positions) if positions else 0
+
+        # Sort competitors by grid presence (most visible first)
+        sorted_competitors = sorted(
+            all_competitors.values(),
+            key=lambda x: (-x['grid_presence'], x['avg_position'])
+        )
+
+        return {
+            'keyword': keyword,
+            'grid_size': len(grid_coords),
+            'grid_results': results,
+            'competitors': sorted_competitors,
+            'total_competitors_found': len(all_competitors),
+            'cost': self.stats.total_cost
+        }
+
+    # ========================================================================
+    # BUSINESS DATA API - Google My Business
+    # ========================================================================
+
+    async def business_data_google_my_business_info(
+        self,
+        keyword: str,
+        location_name: str = "United States",
+        language_code: str = "en"
+    ) -> Dict:
+        """
+        Get Google My Business profile info.
+
+        Args:
+            keyword: Business name or search term
+            location_name: Location for search
+            language_code: Language code
+
+        Returns:
+            Dict with business profile data (hours, categories, services, etc.)
+        """
+        data = [{
+            "keyword": keyword,
+            "location_name": location_name,
+            "language_code": language_code
+        }]
+
+        return await self._request(
+            '/business_data/google/my_business_info/live',
+            data=data,
+            cost_key='business_data_my_business_info'
+        )
+
+    async def business_data_google_reviews(
+        self,
+        keyword: str,
+        location_name: str = "United States",
+        language_code: str = "en",
+        depth: int = 100,
+        sort_by: str = "newest"
+    ) -> Dict:
+        """
+        Get Google reviews for a business.
+
+        Args:
+            keyword: Business name or search term
+            location_name: Location for search
+            language_code: Language code
+            depth: Number of reviews to retrieve (max 4500)
+            sort_by: Sort order - "newest", "most_relevant", "highest_rating", "lowest_rating"
+
+        Returns:
+            Dict with reviews including rating, text, author, date
+        """
+        data = [{
+            "keyword": keyword,
+            "location_name": location_name,
+            "language_code": language_code,
+            "depth": min(depth, 4500),
+            "sort_by": sort_by
+        }]
+
+        return await self._request(
+            '/business_data/google/reviews/live',
+            data=data,
+            cost_key='business_data_reviews'
+        )
+
+    async def business_data_google_questions_answers(
+        self,
+        keyword: str,
+        location_name: str = "United States",
+        language_code: str = "en",
+        depth: int = 100
+    ) -> Dict:
+        """
+        Get Q&A for a Google Business Profile.
+
+        Args:
+            keyword: Business name or search term
+            location_name: Location for search
+            language_code: Language code
+            depth: Number of Q&A items to retrieve
+
+        Returns:
+            Dict with questions and answers from the business profile
+        """
+        data = [{
+            "keyword": keyword,
+            "location_name": location_name,
+            "language_code": language_code,
+            "depth": depth
+        }]
+
+        return await self._request(
+            '/business_data/google/questions_and_answers/live',
+            data=data,
+            cost_key='business_data_qa'
+        )
+
+    async def business_data_google_hotel_info(
+        self,
+        keyword: str,
+        location_name: str = "United States",
+        language_code: str = "en"
+    ) -> Dict:
+        """
+        Get hotel/hospitality business info (specialized endpoint).
+
+        Args:
+            keyword: Hotel name or search term
+            location_name: Location for search
+            language_code: Language code
+
+        Returns:
+            Dict with hotel-specific info (amenities, pricing, etc.)
+        """
+        data = [{
+            "keyword": keyword,
+            "location_name": location_name,
+            "language_code": language_code
+        }]
+
+        return await self._request(
+            '/business_data/google/hotel_info/live',
+            data=data,
+            cost_key='business_data_hotel_info'
         )
 
     # ========================================================================
