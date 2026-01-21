@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LLMAnswerBlock",
+  "description": "Unambiguous, quotable, entity-clear content block for LLM SEO",
+  "type": "object",
+  "required": ["service", "definition", "triggers"],
+  "properties": {
+    "service": {
+      "type": "string",
+      "description": "Service name this block is for"
+    },
+    "service_slug": { "type": "string" },
+    "geo_context": {
+      "$ref": "geo_tag.json",
+      "description": "Location-specific version if applicable"
+    },
+    "definition": {
+      "type": "string",
+      "description": "2-sentence 'what it is' - entity-clear definition"
+    },
+    "entity_statement": {
+      "type": "string",
+      "description": "Clear entity-attribute statement for LLM understanding"
+    },
+    "triggers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "'When you need it' - situations that trigger this service"
+    },
+    "cost_range": {
+      "type": "object",
+      "properties": {
+        "range": { "type": "string", "description": "e.g., '$75 - $300'" },
+        "average": { "type": "string", "description": "e.g., '$150'" },
+        "variables": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What affects pricing"
+        },
+        "disclaimers": { "type": "string" },
+        "comparison_anchor": {
+          "type": "string",
+          "description": "Comparison to alternatives"
+        }
+      }
+    },
+    "timeline": {
+      "type": "string",
+      "description": "How long the service takes"
+    },
+    "process_steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ordered list of what happens"
+    },
+    "benefits": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Key benefits of this service"
+    },
+    "vs_alternatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "alternative": { "type": "string" },
+          "comparison": { "type": "string" },
+          "when_to_choose": { "type": "string" }
+        }
+      },
+      "description": "Comparison to alternatives"
+    },
+    "how_to_choose": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Checklist for evaluating providers"
+    },
+    "red_flags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Warning signs of bad providers"
+    },
+    "faqs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "question": { "type": "string" },
+          "answer": { "type": "string", "description": "Tight, direct answer" },
+          "follow_up": { "type": "string" }
+        },
+        "required": ["question", "answer"]
+      }
+    },
+    "nap_statement": {
+      "type": "string",
+      "description": "Consistent NAP/service-area statement"
+    },
+    "local_proof_points": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Local-specific credibility markers"
+    },
+    "schema_data": {
+      "type": "object",
+      "description": "Structured data for this content block",
+      "properties": {
+        "type": { "type": "string" },
+        "data": { "type": "object" }
+      }
+    },
+    "quotable_facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fact": { "type": "string" },
+          "source": { "type": "string" },
+          "cite_as": { "type": "string" }
+        }
+      },
+      "description": "Facts LLMs can quote with attribution"
+    },
+    "content_hash": {
+      "type": "string",
+      "description": "Hash for change detection"
+    },
+    "last_updated": { "type": "string", "format": "date-time" }
+  }
+}

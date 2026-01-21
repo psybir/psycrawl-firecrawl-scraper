@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Service",
+  "description": "Service/Product entity - what the client sells",
+  "type": "object",
+  "required": ["id", "name", "slug", "is_money_service"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string", "description": "Service name (e.g., 'Paintless Dent Repair')" },
+    "slug": { "type": "string", "description": "URL-safe slug (e.g., 'paintless-dent-repair')" },
+    "description": { "type": "string" },
+    "short_description": { "type": "string", "maxLength": 160 },
+    "is_money_service": {
+      "type": "boolean",
+      "description": "Primary revenue driver vs. supporting service"
+    },
+    "parent_service_id": {
+      "type": "string",
+      "description": "For sub-services (e.g., 'door ding' under 'PDR')"
+    },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Primary keywords for this service"
+    },
+    "synonyms": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Alternative terms (e.g., 'PDR', 'dent removal')"
+    },
+    "geo_applicability": {
+      "type": "string",
+      "enum": ["local_radius", "multi_location", "domestic", "national"],
+      "description": "Geographic scope of this service"
+    },
+    "defined_variables": {
+      "type": "object",
+      "description": "Factual data for LLM SEO content",
+      "properties": {
+        "time_range": { "type": "string", "description": "e.g., '30 minutes to 2 hours'" },
+        "cost_range": { "type": "string", "description": "e.g., '$75-$300'" },
+        "process_steps": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ordered list of steps"
+        },
+        "tools_used": { "type": "array", "items": { "type": "string" } },
+        "best_for": { "type": "array", "items": { "type": "string" } },
+        "not_suitable_for": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "seasonal_relevance": {
+      "type": "object",
+      "properties": {
+        "peak_months": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 12 } },
+        "triggers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "schema_type": {
+      "type": "string",
+      "enum": ["Service", "Product", "ProfessionalService"],
+      "default": "Service"
+    },
+    "faq_topics": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Common questions about this service"
+    }
+  }
+}

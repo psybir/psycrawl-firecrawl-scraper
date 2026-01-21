@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CompetitorProfile",
+  "description": "Structured competitor profile - not vibes, structured analysis",
+  "type": "object",
+  "required": ["id", "domain", "name"],
+  "properties": {
+    "id": { "type": "string" },
+    "domain": { "type": "string" },
+    "name": { "type": "string" },
+    "url": { "type": "string", "format": "uri" },
+    "sources_scraped": {
+      "type": "array",
+      "items": { "$ref": "source.json" },
+      "description": "All sources collected for this competitor"
+    },
+    "geo_tags": {
+      "type": "array",
+      "items": { "$ref": "geo_tag.json" },
+      "description": "Locations this competitor operates in"
+    },
+    "services_offered": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Services identified on their site"
+    },
+
+    "trust_signals": {
+      "type": "object",
+      "description": "Trust indicators found on site",
+      "properties": {
+        "review_count": { "type": "integer" },
+        "rating": { "type": "number", "minimum": 0, "maximum": 5 },
+        "review_recency": {
+          "type": "string",
+          "enum": ["recent", "stale", "unknown"],
+          "description": "Are reviews from last 30 days?"
+        },
+        "review_sources": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Where reviews come from (Google, Yelp, etc.)"
+        },
+        "licenses_shown": { "type": "boolean" },
+        "licenses_location": { "type": "string", "description": "Where on site licenses appear" },
+        "insurance_shown": { "type": "boolean" },
+        "insurance_details": { "type": "string" },
+        "certifications": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Certifications displayed"
+        },
+        "warranty_guarantee_language": { "type": "string" },
+        "warranty_duration": { "type": "string" },
+        "years_in_business": { "type": "integer" },
+        "real_photos_vs_stock": {
+          "type": "string",
+          "enum": ["real", "stock", "mixed", "unknown"]
+        },
+        "team_photos": { "type": "boolean" },
+        "team_bios": { "type": "boolean" },
+        "owner_visible": { "type": "boolean" },
+        "truck_photos": { "type": "boolean" },
+        "job_photos": { "type": "boolean" },
+        "before_after_gallery": { "type": "boolean" },
+        "gallery_count": { "type": "integer" },
+        "video_content": { "type": "boolean" },
+        "video_count": { "type": "integer" },
+        "badges_associations": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "BBB, Chamber, trade associations"
+        },
+        "manufacturer_partnerships": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Brand partnerships shown"
+        },
+        "trust_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Computed trust score"
+        }
+      }
+    },
+
+    "conversion_mechanics": {
+      "type": "object",
+      "description": "Conversion optimization elements",
+      "properties": {
+        "phone_visible": { "type": "boolean" },
+        "phone_clickable": { "type": "boolean" },
+        "sticky_header": { "type": "boolean" },
+        "sticky_cta": { "type": "boolean" },
+        "sticky_call": { "type": "boolean" },
+        "form_present": { "type": "boolean" },
+        "form_length": { "type": "integer", "description": "Number of form fields" },
+        "form_friction_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "0=frictionless, 1=high friction"
+        },
+        "chat_widget": { "type": "boolean" },
+        "chat_provider": { "type": "string" },
+        "emergency_language": { "type": "boolean", "description": "'24/7', 'same day', etc." },
+        "emergency_supported_by_copy": { "type": "boolean", "description": "Actual emergency capability" },
+        "financing_shown": { "type": "boolean" },
+        "financing_providers": { "type": "array", "items": { "type": "string" } },
+        "price_anchors": { "type": "boolean", "description": "Starting at $X type pricing" },
+        "price_transparency": {
+          "type": "string",
+          "enum": ["none", "ranges", "calculator", "exact"]
+        },
+        "free_quote_language": { "type": "boolean" },
+        "what_happens_next_clarity": { "type": "boolean", "description": "Clear next steps after contact" },
+        "multiple_cta_types": { "type": "boolean" },
+        "cta_types": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "call, form, chat, schedule, etc."
+        },
+        "conversion_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+
+    "seo_structure": {
+      "type": "object",
+      "description": "Site structure and SEO elements",
+      "properties": {
+        "page_count": { "type": "integer" },
+        "page_types_present": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["home", "service", "service-area", "location", "proof-hub", "gallery", "faq", "blog", "about", "contact", "pricing", "reviews", "careers"]
+          }
+        },
+        "service_pages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string" },
+              "service": { "type": "string" },
+              "word_count": { "type": "integer" }
+            }
+          }
+        },
+        "service_area_pages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string" },
+              "location": { "type": "string" }
+            }
+          }
+        },
+        "internal_linking_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Quality of internal linking"
+        },
+        "internal_linking_patterns": { "type": "string" },
+        "nav_structure": { "type": "string", "description": "Navigation menu structure" },
+        "breadcrumbs": { "type": "boolean" },
+        "headings_intent_match": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "H1/H2 match search intent"
+        },
+        "schema_markup": {
+          "type": "object",
+          "description": "Schema types by page type",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "blog_active": { "type": "boolean" },
+        "blog_frequency": { "type": "string", "description": "Posts per month" },
+        "last_blog_post": { "type": "string", "format": "date" },
+        "content_freshness": { "type": "string", "enum": ["fresh", "moderate", "stale"] }
+      }
+    },
+
+    "technical_seo": {
+      "type": "object",
+      "properties": {
+        "mobile_friendly": { "type": "boolean" },
+        "page_speed_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "core_web_vitals": {
+          "type": "object",
+          "properties": {
+            "lcp": { "type": "number" },
+            "fid": { "type": "number" },
+            "cls": { "type": "number" }
+          }
+        },
+        "ssl": { "type": "boolean" },
+        "sitemap": { "type": "boolean" },
+        "robots_txt": { "type": "boolean" }
+      }
+    },
+
+    "grid_performance": {
+      "type": "object",
+      "description": "Local pack/maps performance by city",
+      "additionalProperties": {
+        "type": "number",
+        "description": "Average rank for that city"
+      }
+    },
+
+    "backlinks": {
+      "type": "object",
+      "properties": {
+        "total_backlinks": { "type": "integer" },
+        "referring_domains": { "type": "integer" },
+        "domain_authority": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "authority_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "top_backlinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "domain": { "type": "string" },
+              "authority": { "type": "integer" },
+              "type": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "social_presence": {
+      "type": "object",
+      "properties": {
+        "facebook": { "type": "string", "format": "uri" },
+        "instagram": { "type": "string", "format": "uri" },
+        "youtube": { "type": "string", "format": "uri" },
+        "linkedin": { "type": "string", "format": "uri" },
+        "tiktok": { "type": "string", "format": "uri" },
+        "activity_level": { "type": "string", "enum": ["active", "moderate", "inactive", "none"] }
+      }
+    },
+
+    "overall_threat_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"],
+      "description": "How much of a competitive threat"
+    },
+
+    "strengths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Key competitive strengths"
+    },
+
+    "weaknesses": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Key competitive weaknesses"
+    },
+
+    "analyzed_at": { "type": "string", "format": "date-time" },
+    "confidence_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence in this profile's accuracy"
+    }
+  }
+}

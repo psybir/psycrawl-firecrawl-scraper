@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Location",
+  "description": "Location entity - geo-targeted service areas",
+  "type": "object",
+  "required": ["id", "name", "geo_scope", "geo_bucket"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string", "description": "Location name (e.g., 'Bethlehem, PA')" },
+    "slug": { "type": "string", "description": "URL-safe slug" },
+    "address": { "type": "string" },
+    "coordinates": {
+      "type": "object",
+      "properties": {
+        "lat": { "type": "number" },
+        "lng": { "type": "number" }
+      },
+      "required": ["lat", "lng"]
+    },
+    "geo_scope": {
+      "type": "string",
+      "enum": ["local_radius", "multi_location", "domestic"],
+      "description": "How this location is served"
+    },
+    "geo_bucket": {
+      "type": "string",
+      "enum": ["0-10", "10-30", "30-60", "60-90", "90+"],
+      "description": "Distance bucket from primary location (miles)"
+    },
+    "location_cluster": {
+      "type": "string",
+      "description": "Logical grouping (e.g., 'Lehigh Valley')"
+    },
+    "is_primary": {
+      "type": "boolean",
+      "description": "Is this the main business location?"
+    },
+    "is_physical": {
+      "type": "boolean",
+      "description": "Physical location vs. service area only"
+    },
+    "population": { "type": "integer" },
+    "households": { "type": "integer" },
+    "median_income": { "type": "number" },
+    "current_rank": {
+      "type": "number",
+      "description": "Current average grid rank for this location"
+    },
+    "target_rank": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "Target rank goal"
+    },
+    "rank_trend": {
+      "type": "string",
+      "enum": ["improving", "stable", "declining"],
+      "description": "Rank trajectory"
+    },
+    "competitor_density": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "How many competitors in this area"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["primary", "secondary", "expansion"],
+      "description": "Business priority for this location"
+    },
+    "travel_time_minutes": {
+      "type": "integer",
+      "description": "Travel time from primary location"
+    }
+  }
+}

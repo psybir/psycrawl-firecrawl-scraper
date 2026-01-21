@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Finding",
+  "description": "Raw observation from analysis - input to Actionable Insight generation",
+  "type": "object",
+  "required": ["id", "finding_type", "observation", "source_refs"],
+  "properties": {
+    "id": { "type": "string" },
+    "finding_type": {
+      "type": "string",
+      "enum": ["gap", "strength", "opportunity", "threat", "pattern", "anomaly"],
+      "description": "Type of finding"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["trust", "conversion", "content", "technical", "backlinks", "local_seo", "structure", "ux"],
+      "description": "Finding category"
+    },
+    "observation": {
+      "type": "string",
+      "description": "What was observed - the raw fact"
+    },
+    "details": {
+      "type": "string",
+      "description": "Additional context"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "IDs of sources that contributed to this finding"
+    },
+    "competitor_refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "IDs of competitors involved"
+    },
+    "geo_context": {
+      "$ref": "geo_tag.json",
+      "description": "Geographic context if location-specific"
+    },
+    "service_context": {
+      "type": "string",
+      "description": "Service this finding relates to"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "How confident we are in this finding"
+    },
+    "data_points": {
+      "type": "object",
+      "description": "Supporting data",
+      "properties": {
+        "our_value": { "type": ["string", "number", "boolean"] },
+        "competitor_values": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] }
+        },
+        "benchmark": { "type": ["string", "number"] },
+        "delta": { "type": "number" }
+      }
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"],
+      "description": "How urgent is this finding"
+    },
+    "discovered_at": { "type": "string", "format": "date-time" },
+    "rule_id": {
+      "type": "string",
+      "description": "Which insight rule generated this finding"
+    }
+  }
+}

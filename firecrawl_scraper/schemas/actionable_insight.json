@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActionableInsight",
+  "description": "THE MISSING BRIDGE - translates findings into spec changes with clear rationale",
+  "type": "object",
+  "required": ["id", "problem", "hypothesis", "evidence", "spec_change", "expected_impact"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": {
+      "type": "string",
+      "description": "Short title for this insight"
+    },
+    "problem": {
+      "type": "string",
+      "description": "What's missing/weak - the specific gap identified"
+    },
+    "hypothesis": {
+      "type": "string",
+      "description": "Why it matters - the business/SEO impact theory"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_type": { "type": "string" },
+          "source_id": { "type": "string" },
+          "source_url": { "type": "string", "format": "uri" },
+          "observation": { "type": "string" },
+          "data_point": { "type": ["string", "number"] }
+        },
+        "required": ["source_type", "observation"]
+      },
+      "description": "Which sources/competitors show the pattern"
+    },
+    "finding_refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "IDs of findings that led to this insight"
+    },
+    "spec_change": {
+      "type": "string",
+      "description": "What to build/change - the concrete action"
+    },
+    "spec_details": {
+      "type": "object",
+      "description": "Detailed spec for implementation",
+      "properties": {
+        "page_type": { "type": "string" },
+        "component": { "type": "string" },
+        "content_requirements": { "type": "array", "items": { "type": "string" } },
+        "design_requirements": { "type": "array", "items": { "type": "string" } },
+        "placement": { "type": "string" },
+        "copy_guidelines": { "type": "string" },
+        "schema_requirements": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "expected_impact": {
+      "type": "object",
+      "description": "Predicted outcomes",
+      "properties": {
+        "rank_impact": {
+          "type": "string",
+          "enum": ["high", "medium", "low", "none"],
+          "description": "Impact on search rankings"
+        },
+        "cvr_impact": {
+          "type": "string",
+          "enum": ["high", "medium", "low", "none"],
+          "description": "Impact on conversion rate"
+        },
+        "trust_impact": {
+          "type": "string",
+          "enum": ["high", "medium", "low", "none"],
+          "description": "Impact on trust signals"
+        },
+        "speed_impact": {
+          "type": "string",
+          "enum": ["high", "medium", "low", "none"],
+          "description": "Time to see results"
+        },
+        "traffic_estimate": { "type": "string" },
+        "conversion_estimate": { "type": "string" }
+      },
+      "required": ["rank_impact", "cvr_impact"]
+    },
+    "priority_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Computed priority (impact × confidence / effort)"
+    },
+    "effort_estimate": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Implementation effort"
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Other insights that must be done first"
+    },
+    "geo_context": {
+      "$ref": "geo_tag.json",
+      "description": "Location-specific insight"
+    },
+    "service_context": {
+      "type": "string",
+      "description": "Service this insight relates to"
+    },
+    "insight_type": {
+      "type": "string",
+      "enum": [
+        "trust_gap",
+        "conversion_gap",
+        "content_gap",
+        "technical_fix",
+        "backlink_opportunity",
+        "local_seo_fix",
+        "structure_improvement",
+        "competitive_response"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "approved", "in_progress", "implemented", "rejected"],
+      "default": "pending"
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "approved_at": { "type": "string", "format": "date-time" },
+    "implemented_at": { "type": "string", "format": "date-time" }
+  }
+}

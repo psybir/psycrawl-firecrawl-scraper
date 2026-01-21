@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GeoTag",
+  "description": "Geo-tagging for location-aware entities",
+  "type": "object",
+  "required": ["city", "state"],
+  "properties": {
+    "city": { "type": "string" },
+    "state": { "type": "string" },
+    "zip": { "type": "string" },
+    "county": { "type": "string" },
+    "region": { "type": "string" },
+    "dma": { "type": "string", "description": "Designated Market Area" },
+    "coordinates": {
+      "type": "object",
+      "properties": {
+        "lat": { "type": "number" },
+        "lng": { "type": "number" }
+      },
+      "required": ["lat", "lng"]
+    },
+    "radius_miles": { "type": "number", "description": "Service radius from this point" }
+  }
+}

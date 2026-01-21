@@ -94,3 +94,6 @@ $RECYCLE.BIN/
 *.rar
 *.tar
 *.zip
+
+# Generated output
+output/

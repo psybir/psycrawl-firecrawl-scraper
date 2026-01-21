@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Source",
+  "description": "Data source entity - where competitive intelligence comes from",
+  "type": "object",
+  "required": ["id", "source_type", "url"],
+  "properties": {
+    "id": { "type": "string" },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "serp_organic",
+        "serp_local_pack",
+        "serp_maps",
+        "competitor_website",
+        "competitor_page",
+        "gbp_profile",
+        "directory_listing",
+        "review_site",
+        "social_media",
+        "chamber_commerce",
+        "industry_publication",
+        "job_board",
+        "citation_site",
+        "forum",
+        "youtube"
+      ],
+      "description": "Type of data source"
+    },
+    "url": { "type": "string", "format": "uri" },
+    "domain": { "type": "string" },
+    "scraped_at": { "type": "string", "format": "date-time" },
+    "scrape_status": {
+      "type": "string",
+      "enum": ["pending", "success", "failed", "partial"],
+      "default": "pending"
+    },
+    "data_freshness": {
+      "type": "string",
+      "enum": ["current", "recent", "stale"],
+      "description": "How fresh is this data?"
+    },
+    "freshness_days": { "type": "integer", "description": "Days since last scrape" },
+    "geo_tags": {
+      "type": "array",
+      "items": { "$ref": "geo_tag.json" },
+      "description": "Locations this source relates to"
+    },
+    "keywords_targeted": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Keywords this source was found for"
+    },
+    "serp_position": {
+      "type": "integer",
+      "description": "Position in SERP when discovered"
+    },
+    "serp_features": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["featured_snippet", "local_pack", "knowledge_panel", "people_also_ask", "images", "videos", "news"]
+      }
+    },
+    "competitor_id": {
+      "type": "string",
+      "description": "If this source belongs to a competitor"
+    },
+    "raw_data": {
+      "type": "object",
+      "description": "Raw scraped data before normalization"
+    },
+    "extraction_schema": {
+      "type": "string",
+      "description": "Which extraction schema was used"
+    },
+    "quality_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Data quality score"
+    }
+  }
+}

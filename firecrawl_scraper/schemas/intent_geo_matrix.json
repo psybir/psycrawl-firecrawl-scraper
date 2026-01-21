@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IntentGeoMatrix",
+  "description": "Service x Geo matrix artifact - maps services to locations with targeting specs",
+  "type": "object",
+  "required": ["client_id", "rows", "columns", "cells"],
+  "properties": {
+    "client_id": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "version": { "type": "string" },
+
+    "rows": {
+      "type": "array",
+      "description": "Services (matrix rows)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "service_id": { "type": "string" },
+          "service_name": { "type": "string" },
+          "is_money_service": { "type": "boolean" },
+          "priority": { "type": "integer" }
+        },
+        "required": ["service_id", "service_name"]
+      }
+    },
+
+    "columns": {
+      "type": "array",
+      "description": "Geo buckets (matrix columns)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "geo_bucket": {
+            "type": "string",
+            "enum": ["0-10", "10-30", "30-60", "60-90", "90+", "domestic"]
+          },
+          "label": { "type": "string" },
+          "locations": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Location names in this bucket"
+          },
+          "priority": { "type": "integer" }
+        },
+        "required": ["geo_bucket", "label"]
+      }
+    },
+
+    "cells": {
+      "type": "array",
+      "description": "Matrix cells - one per service/geo combination",
+      "items": {
+        "type": "object",
+        "required": ["service_id", "geo_bucket", "page_strategy"],
+        "properties": {
+          "service_id": { "type": "string" },
+          "geo_bucket": { "type": "string" },
+          "page_strategy": {
+            "type": "string",
+            "enum": ["dedicated", "merged", "section", "none"],
+            "description": "How to handle this service/geo combo"
+          },
+          "page_type": {
+            "type": "string",
+            "enum": ["service", "service-area", "landing", "blog", "guide", "merged"],
+            "description": "What type of page to create"
+          },
+          "merge_with": {
+            "type": "string",
+            "description": "If merged, which service/page to merge into"
+          },
+          "keyword_cluster": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Primary keywords to target"
+          },
+          "search_volume": {
+            "type": "object",
+            "properties": {
+              "primary": { "type": "integer" },
+              "total": { "type": "integer" }
+            }
+          },
+          "competition_level": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "current_rank": { "type": "number" },
+          "target_rank": { "type": "integer" },
+          "proof_requirements": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Trust elements needed for this combo"
+          },
+          "cta_rules": {
+            "type": "object",
+            "properties": {
+              "primary": { "type": "string" },
+              "urgency": { "type": "string", "enum": ["high", "medium", "low"] },
+              "phone_prominent": { "type": "boolean" }
+            }
+          },
+          "schema_types": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "content_notes": { "type": "string" },
+          "priority_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Opportunity score for this cell"
+          }
+        }
+      }
+    },
+
+    "summary": {
+      "type": "object",
+      "properties": {
+        "total_pages_needed": { "type": "integer" },
+        "service_pages": { "type": "integer" },
+        "service_area_pages": { "type": "integer" },
+        "merged_pages": { "type": "integer" },
+        "blog_content_needed": { "type": "integer" },
+        "total_keywords": { "type": "integer" },
+        "total_search_volume": { "type": "integer" }
+      }
+    }
+  }
+}

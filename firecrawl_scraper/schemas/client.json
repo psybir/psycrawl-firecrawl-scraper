@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Client",
+  "description": "Client entity - the business being optimized (e.g., Dent Sorcery)",
+  "type": "object",
+  "required": ["id", "name", "vertical", "services", "locations"],
+  "properties": {
+    "id": { "type": "string", "description": "Unique client identifier" },
+    "name": { "type": "string", "description": "Business name" },
+    "domain": { "type": "string", "format": "hostname", "description": "Primary domain" },
+    "vertical": {
+      "type": "string",
+      "enum": ["pdr", "plumbing", "hvac", "roofing", "dental", "medspa", "auto_body", "landscaping", "electrical"],
+      "description": "Industry vertical"
+    },
+    "services": {
+      "type": "array",
+      "items": { "$ref": "service.json" },
+      "description": "Services offered"
+    },
+    "locations": {
+      "type": "array",
+      "items": { "$ref": "location.json" },
+      "description": "Service locations"
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Operational constraints",
+      "properties": {
+        "max_travel_radius_miles": { "type": "number" },
+        "service_hours": { "type": "string" },
+        "capacity_per_day": { "type": "integer" },
+        "seasonal_factors": { "type": "array", "items": { "type": "string" } },
+        "insurance_partnerships": { "type": "array", "items": { "type": "string" } },
+        "certifications": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "brand": {
+      "type": "object",
+      "properties": {
+        "tagline": { "type": "string" },
+        "differentiators": { "type": "array", "items": { "type": "string" } },
+        "tone": { "type": "string", "enum": ["professional", "friendly", "technical", "casual"] },
+        "colors": { "type": "object" },
+        "logo_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "contact": {
+      "type": "object",
+      "properties": {
+        "phone": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "address": { "type": "string" }
+      }
+    },
+    "gbp_profile": {
+      "type": "object",
+      "description": "Google Business Profile data",
+      "properties": {
+        "place_id": { "type": "string" },
+        "rating": { "type": "number" },
+        "review_count": { "type": "integer" },
+        "categories": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  }
+}

@@ -3,9 +3,13 @@
 from .design_analyzer import DesignAnalyzer
 from .seo_enrichment import SEOEnrichmentStrategy
 from .universal_scraper import UniversalScraper
+from .competitor_extractor import CompetitorExtractor, GeoTagger, SourceClassifier
 
 __all__ = [
     "DesignAnalyzer",
     "SEOEnrichmentStrategy",
-    "UniversalScraper"
+    "UniversalScraper",
+    "CompetitorExtractor",
+    "GeoTagger",
+    "SourceClassifier",
 ]

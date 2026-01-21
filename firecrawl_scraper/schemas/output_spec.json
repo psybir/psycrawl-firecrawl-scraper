@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OutputSpec",
+  "description": "Direct build instructions for Next.js site generation",
+  "type": "object",
+  "required": ["client_id", "page_map", "component_set"],
+  "properties": {
+    "client_id": { "type": "string" },
+    "client_name": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "version": { "type": "string" },
+
+    "site_config": {
+      "type": "object",
+      "description": "Global site configuration",
+      "properties": {
+        "domain": { "type": "string" },
+        "site_name": { "type": "string" },
+        "tagline": { "type": "string" },
+        "primary_phone": { "type": "string" },
+        "primary_email": { "type": "string" },
+        "address": { "type": "string" },
+        "service_area_text": { "type": "string" },
+        "business_hours": { "type": "string" },
+        "gtm_id": { "type": "string" },
+        "ga4_id": { "type": "string" }
+      }
+    },
+
+    "page_map": {
+      "type": "array",
+      "description": "All pages to generate",
+      "items": {
+        "type": "object",
+        "required": ["route", "page_type", "template"],
+        "properties": {
+          "route": { "type": "string", "description": "URL path (e.g., '/services/paintless-dent-repair')" },
+          "page_type": {
+            "type": "string",
+            "enum": ["home", "service", "service-area", "proof-hub", "gallery", "faq", "blog", "blog-post", "about", "contact", "pricing", "reviews", "careers", "landing"]
+          },
+          "template": { "type": "string", "description": "Template name to use" },
+          "title": { "type": "string" },
+          "meta_description": { "type": "string", "maxLength": 160 },
+          "h1": { "type": "string" },
+          "geo_target": { "$ref": "geo_tag.json" },
+          "service_target": { "type": "string" },
+          "components": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Component names to include"
+          },
+          "content_requirements": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "schema_types": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "internal_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "anchor": { "type": "string" },
+                "target": { "type": "string" },
+                "placement": { "type": "string" }
+              }
+            }
+          },
+          "cta_rules": {
+            "type": "object",
+            "properties": {
+              "primary_cta": { "type": "string" },
+              "secondary_cta": { "type": "string" },
+              "urgency_level": { "type": "string", "enum": ["high", "medium", "low"] }
+            }
+          },
+          "priority": { "type": "integer", "description": "Build priority (1=highest)" },
+          "keyword_targets": { "type": "array", "items": { "type": "string" } },
+          "word_count_target": { "type": "integer" },
+          "llm_answer_block_id": { "type": "string" }
+        }
+      }
+    },
+
+    "component_set": {
+      "type": "array",
+      "description": "Reusable components spec",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["trust", "conversion", "content", "seo", "navigation", "footer", "hero", "gallery"]
+          },
+          "description": { "type": "string" },
+          "required_data": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Data fields this component needs"
+          },
+          "placement_rules": { "type": "string" },
+          "variants": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "props_schema": {
+            "type": "object",
+            "description": "Component props definition"
+          }
+        }
+      }
+    },
+
+    "internal_linking_rules": {
+      "type": "array",
+      "description": "Site-wide linking strategy",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from_page_type": { "type": "string" },
+          "to_page_type": { "type": "string" },
+          "anchor_pattern": { "type": "string", "description": "Template for anchor text" },
+          "placement": { "type": "string" },
+          "max_links": { "type": "integer" },
+          "priority": { "type": "integer" }
+        }
+      }
+    },
+
+    "schema_requirements": {
+      "type": "array",
+      "description": "Structured data requirements by page type",
+      "items": {
+        "type": "object",
+        "properties": {
+          "page_type": { "type": "string" },
+          "schema_types": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "required_fields": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "template": { "type": "object" }
+        }
+      }
+    },
+
+    "llm_answer_blocks": {
+      "type": "array",
+      "description": "LLM SEO content specifications",
+      "items": { "$ref": "llm_answer_block.json" }
+    },
+
+    "content_calendar": {
+      "type": "array",
+      "description": "Blog/content publication schedule",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "topic": { "type": "string" },
+          "target_keyword": { "type": "string" },
+          "publish_date": { "type": "string", "format": "date" },
+          "content_type": { "type": "string" },
+          "word_count_target": { "type": "integer" }
+        }
+      }
+    },
+
+    "backlink_targets": {
+      "type": "array",
+      "description": "Backlink acquisition targets",
+      "items": {
+        "type": "object",
+        "properties": {
+          "domain": { "type": "string" },
+          "type": { "type": "string" },
+          "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+          "approach": { "type": "string" },
+          "status": { "type": "string" }
+        }
+      }
+    },
+
+    "insights_applied": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "IDs of actionable insights incorporated"
+    },
+
+    "metrics_targets": {
+      "type": "object",
+      "description": "Success metrics",
+      "properties": {
+        "organic_traffic_target": { "type": "integer" },
+        "conversion_rate_target": { "type": "number" },
+        "ranking_targets": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "backlink_target": { "type": "integer" },
+        "authority_target": { "type": "integer" }
+      }
+    }
+  }
+}
