@@ -1,8 +1,38 @@
-# Firecrawl Scraper v2.1 - Ultimate SEO Machine
+# PsyCrawl v4.0 - Psybir Skills System
 
-A battle-tested, professional web scraping and SEO system combining **Firecrawl API v2** and **DataForSEO API v3**. The ultimate tool for content scraping, SEO analysis, keyword research, and competitive intelligence.
+A battle-tested, professional web scraping and competitive intelligence system combining **Firecrawl API v2**, **DataForSEO API v3**, and the new **Psybir Skills System** for decision-grade analysis with geo-context.
 
-## What's New in v2.1 - Ultimate SEO Machine
+## What's New in v4.0 - Psybir Skills System
+
+- **Skills System** - Modular analysis skills for competitive intelligence
+- **`/competitor_intel`** - SWOT analysis, pricing, trust signals, positioning
+- **`/seo_audit`** - 5-tier prioritized SEO analysis
+- **3D Scoring** - Local Pack, Organic Local, Domestic Organic probabilities
+- **Geo-Tagging** - All findings tagged with geographic context
+- **Natural Language Routing** - Query in plain English
+- **CLI Interface** - Run skills from command line
+
+### Quick Start (v4.0)
+
+```bash
+# Install
+pip install -e .
+
+# Configure
+cp .env.example .env
+# Add your FIRECRAWL_API_KEY to .env
+
+# Run skills
+python -m firecrawl_scraper.cli skill list
+python -m firecrawl_scraper.cli skill run competitor_intel https://competitor.com --geo "Your City"
+python -m firecrawl_scraper.cli nlp "analyze competitor in my market"
+```
+
+See `docs/SKILLS_SYSTEM.md` for complete skills documentation.
+
+---
+
+## What's in v2.1 - Ultimate SEO Machine
 
 - **DataForSEO Integration** - Full SERP, keywords, backlinks, on-page analysis
 - **SEO Orchestrator** - Comprehensive audits with one function call

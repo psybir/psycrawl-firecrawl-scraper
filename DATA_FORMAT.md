@@ -420,3 +420,140 @@ find data/ -name "metadata.json" -mtime +30 -delete
 5. **Regular backups**: Compress and backup data directory regularly
 
 For more information, see [README.md](README.md) for usage examples.
+
+---
+
+## 🎯 Skills System Output (v4.0)
+
+The Psybir Skills System generates decision-grade reports in both Markdown and JSON formats.
+
+### Skills Output Directory Structure
+
+```
+data/skills/
+├── competitor_intel/
+│   ├── competitor_intel-20260127-1200.md
+│   └── competitor_intel-20260127-1200.json
+└── seo_audit/
+    ├── seo_audit-20260127-1200.md
+    └── seo_audit-20260127-1200.json
+```
+
+### Markdown Report Format
+
+```markdown
+# Skill Name Analysis
+
+_Generated: 2026-01-27 12:00_
+
+## Geo Context
+
+```yaml
+geo_scope: local_radius
+geo_bucket: 0-10
+location_cluster: "City Name"
+confidence_score: 1.00
+```
+
+## Executive Summary (Decision-Grade)
+
+> **Choose Option A if**: [condition]
+> **Choose Option B if**: [condition]
+
+## 3D Scoring (Psybir)
+
+| Metric | Score | Evidence |
+|--------|-------|----------|
+| Local Pack Probability | X% | [evidence] |
+| Organic Local Probability | X% | [evidence] |
+| Domestic Organic Probability | X% | [evidence] |
+
+## Prioritized Findings
+
+### P1. Critical (Blocking Issues)
+| Issue | Evidence | Impact | Fix | Priority |
+
+### P2. High Impact
+| Issue | Evidence | Impact | Fix | Priority |
+
+## Recommended Actions (Psybir Pipeline)
+1. **Evidence**: [what was found]
+2. **Hypothesis**: [what to do about it]
+3. **Design**: [specific implementation]
+4. **Measure**: [how to track success]
+
+## Related Skills
+- `/seo_audit` - Run for deeper analysis
+```
+
+### JSON Output Schema
+
+```json
+{
+  "skill_name": "competitor_intel",
+  "executed_at": "2026-01-27T12:00:00",
+  "geo_context": {
+    "geo_scope": "local_radius",
+    "geo_bucket": "0-10",
+    "location_cluster": "City Name",
+    "confidence_score": 1.0,
+    "service_areas": ["Area 1", "Area 2"]
+  },
+  "three_d_score": {
+    "local_pack_probability": 40,
+    "local_pack_evidence": "Address visible, 2 service areas",
+    "organic_local_probability": 60,
+    "organic_local_evidence": "3 services listed, local testimonials",
+    "domestic_organic_probability": 15,
+    "domestic_organic_evidence": "3 differentiators"
+  },
+  "decision_statements": [
+    {
+      "choose_option": "Competitor A",
+      "if_condition": "you need established credibility (878 reviews)"
+    }
+  ],
+  "findings": [
+    {
+      "issue": "Missing LocalBusiness schema",
+      "evidence": "Structured data analysis",
+      "impact": "high",
+      "fix": "Implement LocalBusiness JSON-LD with NAP",
+      "priority": "P1",
+      "category": "local_seo"
+    }
+  ],
+  "raw_data": { ... },
+  "related_skills": ["seo_audit", "local_seo"],
+  "psybir_pipeline": {
+    "evidence": "Analyzed competitor website",
+    "hypothesis": "Weak on local SEO",
+    "design": "Create location-specific pages",
+    "measure": "Track local pack position"
+  }
+}
+```
+
+### 3D Scoring System
+
+| Score | Local Pack | Organic Local | Domestic |
+|-------|------------|---------------|----------|
+| 0-20% | Minimal local signals | Needs optimization | Limited authority |
+| 20-40% | Some local presence | Basic optimization | Building authority |
+| 40-60% | Good local signals | Moderate optimization | Moderate authority |
+| 60-80% | Strong local presence | Strong optimization | Good authority |
+| 80-100% | Dominant local presence | Excellent optimization | Strong authority |
+
+### Priority System
+
+| Priority | Label | Typical Fix Time |
+|----------|-------|------------------|
+| P1 | Critical/Blocking | Immediate |
+| P2 | High Impact | This week |
+| P3 | Medium Priority | This month |
+| P4 | Opportunities | Backlog |
+| P5 | Nice-to-have | Future |
+
+---
+
+**Updated for v4.0** - See `docs/SKILLS_SYSTEM.md` for complete skills documentation.

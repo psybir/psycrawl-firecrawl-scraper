@@ -2,6 +2,7 @@
 
 ## Table of Contents
 - [Quick Start](#quick-start)
+- [Skills System (v4.0)](#skills-system-v40)
 - [Production Results](#production-results)
 - [Three Scraping Strategies](#three-scraping-strategies)
 - [Advanced Features](#advanced-features)
@@ -50,6 +51,80 @@ async def main():
 
 asyncio.run(main())
 ```
+
+---
+
+## Skills System (v4.0)
+
+The Psybir Skills System provides decision-grade competitive intelligence with geo-context.
+
+### Available Skills
+
+| Skill | Purpose | Triggers |
+|-------|---------|----------|
+| `/competitor_intel` | Competitor analysis | "competitor", "SWOT", "competition" |
+| `/seo_audit` | SEO analysis | "SEO audit", "technical SEO", "on-page" |
+
+### CLI Commands
+
+```bash
+# List all skills
+python -m firecrawl_scraper.cli skill list
+
+# Get skill info
+python -m firecrawl_scraper.cli skill info competitor_intel
+
+# Run competitor analysis
+python -m firecrawl_scraper.cli skill run competitor_intel https://competitor.com --geo "Your City"
+
+# Run SEO audit
+python -m firecrawl_scraper.cli skill run seo_audit https://yoursite.com --geo "Your City"
+
+# Natural language routing
+python -m firecrawl_scraper.cli nlp "analyze my competitor in Chicago"
+python -m firecrawl_scraper.cli nlp "SEO audit for plumber website in Phoenix"
+```
+
+### Output Example
+
+```
+============================================================
+COMPETITOR_INTEL Analysis Complete
+============================================================
+
+Location: Lehigh Valley
+Scope: local_radius
+
+3D Scores:
+  Local Pack: 40%
+  Organic Local: 60%
+  Domestic: 15%
+
+Findings: 3 total
+  High: 2
+
+============================================================
+
+Report saved: data/skills/competitor_intel/competitor_intel-20260127-1200.md
+```
+
+### 3D Scoring System
+
+- **Local Pack Probability**: Likelihood of ranking in Google Maps/Local Pack
+- **Organic Local Probability**: Likelihood of ranking for local searches
+- **Domestic Organic Probability**: Likelihood of ranking nationally
+
+### Product Context
+
+Create `.psycrawl/product-context.md` to persist business context across analyses:
+
+```bash
+mkdir -p .psycrawl
+cp docs/templates/product-context.template.md .psycrawl/product-context.md
+# Edit with your business info
+```
+
+For complete skills documentation, see `docs/SKILLS_SYSTEM.md`.
 
 ---
 
