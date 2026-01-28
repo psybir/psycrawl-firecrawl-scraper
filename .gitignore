@@ -3,6 +3,9 @@ data/
 *.log
 logs/
 
+# PsyCrawl user-specific context (contains local paths and analysis history)
+.psycrawl/
+
 # Checkpoint files
 **/checkpoints/
 **/_checkpoints/

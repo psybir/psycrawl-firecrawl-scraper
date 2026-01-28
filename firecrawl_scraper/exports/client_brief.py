@@ -3,10 +3,12 @@ Client Brief Generator - Executive summary for stakeholders
 
 Generates a high-level overview suitable for strategy discussions
 and AI agent context-setting.
+
+Enhanced with optional research integration for richer context.
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 
 from ..models import (
     Client,
@@ -20,6 +22,9 @@ from ..models import (
 )
 from ..models.entities import get_business_model, BusinessModel
 
+if TYPE_CHECKING:
+    from ..integrations.research_integration import ResearchIntegration
+
 
 class ClientBriefGenerator:
     """Generate executive client brief markdown"""
@@ -29,25 +34,45 @@ class ClientBriefGenerator:
         client: Client,
         matrix: Optional[IntentGeoMatrix] = None,
         insights: Optional[InsightReport] = None,
-        findings: Optional[FindingsReport] = None
+        findings: Optional[FindingsReport] = None,
+        research_integration: Optional['ResearchIntegration'] = None,
     ):
         self.client = client
         self.matrix = matrix
         self.insights = insights
         self.findings = findings
+        self.research = research_integration
 
     def generate(self) -> str:
         """Generate complete client brief markdown"""
         sections = [
             self._header(),
             self._business_overview(),
+        ]
+
+        # Add research-enhanced sections
+        if self.research:
+            review_sentiment = self._review_sentiment()
+            if review_sentiment:
+                sections.append(review_sentiment)
+
+        sections.extend([
             self._current_state(),
             self._market_position(),
+        ])
+
+        # Add competitive moats from research
+        if self.research:
+            moats = self._competitive_moats()
+            if moats:
+                sections.append(moats)
+
+        sections.extend([
             self._key_opportunities(),
             self._priority_recommendations(),
             self._success_metrics(),
             self._next_steps(),
-        ]
+        ])
 
         return "\n\n".join(sections)
 
@@ -389,6 +414,75 @@ class ClientBriefGenerator:
 ---
 
 *End of Client Brief*"""
+
+    def _review_sentiment(self) -> Optional[str]:
+        """Generate review sentiment section from research data"""
+        if not self.research or not self.research.research.gbp_profile:
+            return None
+
+        gbp = self.research.research.gbp_profile
+        if not gbp.place_topics:
+            return None
+
+        lines = [
+            "## Customer Voice (Review Analysis)",
+            "",
+            "### What Customers Mention Most",
+            "",
+            "```",
+        ]
+
+        for topic, count in sorted(gbp.place_topics.items(), key=lambda x: x[1], reverse=True)[:8]:
+            bar = "█" * min(count, 30)
+            lines.append(f"{topic:15} {bar} ({count})")
+
+        lines.extend([
+            "```",
+            "",
+        ])
+
+        # Highlight differentiators
+        diff_topics = ['storyline', 'movie', 'immersive', 'ai', 'tech', 'skills']
+        found_diffs = [t for t in gbp.place_topics.keys() if any(d in t.lower() for d in diff_topics)]
+        if found_diffs:
+            lines.extend([
+                "### Differentiator Signals",
+                "",
+                "Review topics that validate your unique positioning:",
+                "",
+            ])
+            for topic in found_diffs:
+                lines.append(f"- **{topic}**: {gbp.place_topics[topic]} mentions")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _competitive_moats(self) -> Optional[str]:
+        """Generate competitive moats section from research"""
+        if not self.research:
+            return None
+
+        moats = self.research.get_moat_identification()
+        if not moats:
+            return None
+
+        lines = [
+            "## Competitive Moat",
+            "",
+            "### Defensible Advantages",
+            "",
+        ]
+
+        for i, moat in enumerate(moats, 1):
+            lines.append(f"{i}. **{moat}**")
+
+        lines.extend([
+            "",
+            "*These advantages are difficult for competitors to replicate.*",
+            "",
+        ])
+
+        return "\n".join(lines)
 
     def _get_impact_emoji(self, insight) -> str:
         """Get emoji indicator for insight impact"""

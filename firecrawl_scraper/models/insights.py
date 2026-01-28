@@ -35,10 +35,15 @@ class InsightType(str, Enum):
     LOCAL_SEO_FIX = "local_seo_fix"
     STRUCTURE_IMPROVEMENT = "structure_improvement"
     COMPETITIVE_RESPONSE = "competitive_response"
+    # Added for research integration
+    QUICK_WIN = "quick_win"
+    STRATEGIC = "strategic"
+    MARKET_EXPANSION = "market_expansion"
 
 
 class InsightStatus(str, Enum):
     """Insight workflow status"""
+    PROPOSED = "proposed"
     PENDING = "pending"
     APPROVED = "approved"
     IN_PROGRESS = "in_progress"

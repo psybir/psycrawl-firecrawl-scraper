@@ -30,6 +30,10 @@ class FindingCategory(str, Enum):
     LOCAL_SEO = "local_seo"
     STRUCTURE = "structure"
     UX = "ux"
+    # Added for research integration
+    MARKET = "market"
+    SEO = "seo"
+    POSITIONING = "positioning"
 
 
 class Severity(str, Enum):

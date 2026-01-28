@@ -22,11 +22,11 @@ if requirements_file.exists():
         requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 setup(
-    name="firecrawl-scraper",
-    version="1.0.0",
-    author="Firecrawl Scraper Contributors",
+    name="psycrawl",
+    version="2.7.0",
+    author="PsyCrawl Contributors",
     author_email="",
-    description="Professional web scraping system built on Firecrawl API v2",
+    description="Maximum-value data extraction system with Firecrawl v2.7 and Spark 1 Pro",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/firecrawl-scraper",  # Update with your repo URL
@@ -56,7 +56,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'firecrawl-scraper=firecrawl_scraper.cli:main',  # Optional CLI entry point
+            'psycrawl=firecrawl_scraper.cli:main',  # Primary CLI entry point
+            'firecrawl-scraper=firecrawl_scraper.cli:main',  # Legacy alias
         ],
     },
     include_package_data=True,

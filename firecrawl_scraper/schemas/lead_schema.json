@@ -1,0 +1,141 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Business Lead Schema",
+  "description": "Schema for extracting business lead data for 360 virtual tour sales",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Official business name"
+    },
+    "address": {
+      "type": "string",
+      "description": "Full street address"
+    },
+    "city": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "zip_code": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Primary phone number"
+    },
+    "email": {
+      "type": "string",
+      "description": "Primary contact email"
+    },
+    "website": {
+      "type": "string",
+      "description": "Primary website URL"
+    },
+    "social_media": {
+      "type": "object",
+      "description": "Social media profiles",
+      "properties": {
+        "facebook": {"type": "string"},
+        "instagram": {"type": "string"},
+        "linkedin": {"type": "string"},
+        "twitter": {"type": "string"},
+        "youtube": {"type": "string"},
+        "tiktok": {"type": "string"}
+      }
+    },
+    "has_virtual_tour": {
+      "type": "boolean",
+      "description": "Does the site currently have a virtual tour?"
+    },
+    "virtual_tour_provider": {
+      "type": "string",
+      "description": "If they have a tour, who provides it?"
+    },
+    "google_reviews_count": {
+      "type": "integer",
+      "description": "Number of Google reviews"
+    },
+    "google_rating": {
+      "type": "number",
+      "description": "Google star rating (1-5)"
+    },
+    "decision_makers": {
+      "type": "array",
+      "description": "Names and titles of decision makers",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "title": {"type": "string"},
+          "email": {"type": "string"},
+          "phone": {"type": "string"}
+        }
+      }
+    },
+    "owner_name": {
+      "type": "string",
+      "description": "Business owner name if available"
+    },
+    "year_established": {
+      "type": "integer",
+      "description": "Year business was established"
+    },
+    "employees": {
+      "type": "string",
+      "description": "Estimated number of employees"
+    },
+    "services": {
+      "type": "array",
+      "description": "Services or products offered",
+      "items": {"type": "string"}
+    },
+    "business_hours": {
+      "type": "object",
+      "description": "Operating hours"
+    },
+    "competitors_nearby": {
+      "type": "array",
+      "description": "Nearby competitors mentioned or identified",
+      "items": {"type": "string"}
+    },
+    "estimated_revenue": {
+      "type": "string",
+      "description": "Estimated annual revenue range"
+    },
+    "pain_points": {
+      "type": "array",
+      "description": "Identified business pain points or needs",
+      "items": {"type": "string"}
+    },
+    "marketing_gaps": {
+      "type": "array",
+      "description": "Marketing weaknesses or opportunities",
+      "items": {"type": "string"}
+    },
+    "website_quality": {
+      "type": "object",
+      "description": "Website quality assessment",
+      "properties": {
+        "mobile_friendly": {"type": "boolean"},
+        "has_ssl": {"type": "boolean"},
+        "modern_design": {"type": "boolean"},
+        "has_blog": {"type": "boolean"},
+        "has_booking": {"type": "boolean"},
+        "load_speed": {"type": "string"}
+      }
+    },
+    "lead_score": {
+      "type": "integer",
+      "description": "Calculated lead score (1-100)",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "lead_notes": {
+      "type": "string",
+      "description": "Additional notes about this lead"
+    }
+  },
+  "required": ["name"]
+}

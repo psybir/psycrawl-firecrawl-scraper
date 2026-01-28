@@ -3,10 +3,12 @@ Content Brief Generator - For content creators and AI writers
 
 Generates detailed content requirements for each page type,
 including LLM answer blocks and keyword targets.
+
+Enhanced with optional research integration for keyword targets and content gaps.
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 
 from ..models import (
     Client,
@@ -21,6 +23,9 @@ from ..models import (
     HEALTHCARE_VERTICALS,
 )
 
+if TYPE_CHECKING:
+    from ..integrations.research_integration import ResearchIntegration
+
 
 class ContentBriefGenerator:
     """Generate content brief markdown"""
@@ -29,26 +34,46 @@ class ContentBriefGenerator:
         self,
         client: Client,
         output_spec: Optional[OutputSpec] = None,
-        matrix: Optional[IntentGeoMatrix] = None
+        matrix: Optional[IntentGeoMatrix] = None,
+        research_integration: Optional['ResearchIntegration'] = None,
     ):
         self.client = client
         self.output_spec = output_spec
         self.matrix = matrix
+        self.research = research_integration
 
     def generate(self) -> str:
         """Generate complete content brief markdown"""
         sections = [
             self._header(),
             self._brand_voice(),
+        ]
+
+        # Add keyword strategy from research
+        if self.research:
+            keywords = self._keyword_targeting()
+            if keywords:
+                sections.append(keywords)
+
+        sections.extend([
             self._content_principles(),
             self._homepage_content(),
             self._service_page_content(),
             self._service_area_content(),
             self._llm_answer_blocks(),
+        ])
+
+        # Add content gaps from research
+        if self.research:
+            gaps = self._content_gaps()
+            if gaps:
+                sections.append(gaps)
+
+        sections.extend([
             self._faq_content(),
             self._about_content(),
             self._metadata_guidelines(),
-        ]
+        ])
 
         return "\n\n".join(sections)
 
@@ -640,6 +665,90 @@ All content should be **entity-clear, quotable, and unambiguous** for LLM consum
             "---",
             "",
             "*End of Content Brief*",
+        ])
+
+        return "\n".join(lines)
+
+    def _keyword_targeting(self) -> Optional[str]:
+        """Generate keyword targeting section from research"""
+        if not self.research:
+            return None
+
+        seo_opps = self.research.get_seo_opportunities()
+        if not seo_opps:
+            return None
+
+        lines = [
+            "## Keyword Targeting Strategy",
+            "",
+            "### Primary Keywords (Content Priority)",
+            "",
+        ]
+
+        primary = [k for k in seo_opps if k.get('tier') == 'primary']
+        if primary:
+            lines.extend([
+                "| Keyword | Current Rank | Content Action |",
+                "|---------|--------------|----------------|",
+            ])
+            for kw in primary[:6]:
+                rank = f"#{kw['current_rank']}" if kw.get('current_rank') else "Not ranking"
+                action = "Optimize existing" if kw.get('current_rank') else "Create new page"
+                lines.append(f"| {kw['keyword']} | {rank} | {action} |")
+            lines.append("")
+
+        # Secondary/opportunity keywords
+        secondary = [k for k in seo_opps if k.get('tier') != 'primary' or not k.get('current_rank')]
+        if secondary:
+            lines.extend([
+                "### Keyword Opportunities (New Content)",
+                "",
+            ])
+            for kw in secondary[:8]:
+                lines.append(f"- **{kw['keyword']}**: {kw.get('opportunity', 'Create targeted content')}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _content_gaps(self) -> Optional[str]:
+        """Generate content gaps section from research"""
+        if not self.research:
+            return None
+
+        # Get findings about content gaps
+        findings = self.research.build_findings()
+        content_gaps = [f for f in findings.findings
+                       if 'content' in f.observation.lower()
+                       or 'page' in f.observation.lower()
+                       or 'blog' in f.observation.lower()]
+
+        if not content_gaps:
+            return None
+
+        lines = [
+            "## Content Gaps Identified",
+            "",
+            "### Pages to Create",
+            "",
+        ]
+
+        for gap in content_gaps[:8]:
+            lines.append(f"- **{gap.observation}**")
+            if gap.details:
+                lines.append(f"  - {gap.details[:100]}...")
+
+        lines.extend([
+            "",
+            "### Recommended New Pages",
+            "",
+            "Based on research analysis:",
+            "",
+            "1. Individual experience/room pages (dedicated content)",
+            "2. Location landing pages (Allentown, Easton, Poconos, Philadelphia)",
+            "3. Corporate team building page",
+            "4. Birthday/party packages page",
+            "5. Blog with long-tail keyword targeting",
+            "",
         ])
 
         return "\n".join(lines)

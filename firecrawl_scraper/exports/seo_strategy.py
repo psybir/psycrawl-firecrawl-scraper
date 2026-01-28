@@ -3,10 +3,12 @@ SEO Strategy Generator - For SEO execution
 
 Generates comprehensive SEO strategy including keyword targeting,
 schema implementation, and technical requirements.
+
+Enhanced with research integration for competitive SEO insights.
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 
 from ..models import (
     Client,
@@ -19,6 +21,9 @@ from ..models import (
     HEALTHCARE_VERTICALS,
 )
 
+if TYPE_CHECKING:
+    from ..integrations.research_integration import ResearchIntegration
+
 
 class SEOStrategyGenerator:
     """Generate SEO strategy markdown"""
@@ -28,27 +33,46 @@ class SEOStrategyGenerator:
         client: Client,
         matrix: Optional[IntentGeoMatrix] = None,
         insights: Optional[InsightReport] = None,
-        output_spec: Optional[OutputSpec] = None
+        output_spec: Optional[OutputSpec] = None,
+        research_integration: Optional['ResearchIntegration'] = None,
     ):
         self.client = client
         self.matrix = matrix
         self.insights = insights
         self.output_spec = output_spec
+        self.research = research_integration
 
     def generate(self) -> str:
         """Generate complete SEO strategy markdown"""
         sections = [
             self._header(),
             self._strategy_overview(),
-            self._keyword_strategy(),
-            self._local_seo_strategy(),
+        ]
+
+        # Add research-based keyword analysis
+        if self.research:
+            research_keywords = self._research_keyword_analysis()
+            if research_keywords:
+                sections.append(research_keywords)
+        else:
+            sections.append(self._keyword_strategy())
+
+        sections.append(self._local_seo_strategy())
+
+        # Add competitor SEO analysis from research
+        if self.research:
+            competitor_seo = self._competitor_seo_analysis()
+            if competitor_seo:
+                sections.append(competitor_seo)
+
+        sections.extend([
             self._schema_strategy(),
             self._content_strategy(),
             self._backlink_strategy(),
             self._technical_seo(),
             self._measurement_plan(),
             self._execution_timeline(),
-        ]
+        ])
 
         return "\n\n".join(sections)
 
@@ -547,6 +571,120 @@ class SEOStrategyGenerator:
 - **Weekly:** Rankings check, GSC crawl errors
 - **Monthly:** Full performance report
 - **Quarterly:** Strategy review and adjustment"""
+
+    def _research_keyword_analysis(self) -> Optional[str]:
+        """Generate keyword analysis from research data"""
+        if not self.research:
+            return None
+
+        seo_opps = self.research.get_seo_opportunities()
+        if not seo_opps:
+            return self._keyword_strategy()
+
+        lines = [
+            "## Keyword Strategy (Research-Based)",
+            "",
+            "### Current Ranking Status",
+            "",
+            "| Keyword | Current Rank | Top Competitor | Action |",
+            "|---------|--------------|----------------|--------|",
+        ]
+
+        # Currently ranking keywords
+        ranking = [k for k in seo_opps if k.get('current_rank')]
+        for kw in ranking:
+            rank = f"#{kw['current_rank']}"
+            top = kw.get('top_ranker', 'Unknown')
+            action = "Improve to #1" if kw['current_rank'] > 1 else "Defend"
+            lines.append(f"| {kw['keyword']} | {rank} | {top} | {action} |")
+
+        if not ranking:
+            lines.append("| *Run keyword tracking to populate* | | | |")
+
+        lines.extend([
+            "",
+            "### Keyword Opportunities (Not Ranking)",
+            "",
+        ])
+
+        # Not ranking keywords
+        not_ranking = [k for k in seo_opps if not k.get('current_rank')]
+        if not_ranking:
+            for kw in not_ranking[:10]:
+                opp = kw.get('opportunity', 'Create content')
+                lines.append(f"- **{kw['keyword']}**: {opp}")
+        else:
+            lines.append("*All tracked keywords have rankings*")
+
+        lines.extend([
+            "",
+            "### Priority Keyword Clusters",
+            "",
+        ])
+
+        # Generate clusters from services
+        for service in self.client.money_services[:3]:
+            lines.append(f"**{service.name}:**")
+            if service.keywords:
+                for kw in service.keywords[:4]:
+                    lines.append(f"- {kw}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _competitor_seo_analysis(self) -> Optional[str]:
+        """Generate competitor SEO analysis from research"""
+        if not self.research:
+            return None
+
+        competitors = self.research.build_competitor_profiles()
+        if not competitors:
+            return None
+
+        # Get our review count for comparison
+        our_reviews = 0
+        if self.research.research.gbp_profile:
+            our_reviews = self.research.research.gbp_profile.review_count
+
+        lines = [
+            "## Competitor SEO Analysis",
+            "",
+            "### Review Comparison (Local Pack Factor)",
+            "",
+            "| Competitor | Reviews | Rating | Gap |",
+            "|------------|---------|--------|-----|",
+            f"| **{self.client.name}** | {our_reviews} | 5.0 | — |",
+        ]
+
+        for comp in competitors[:5]:
+            reviews = comp.trust_signals.review_count or 0
+            rating = comp.trust_signals.rating or 0
+            gap = reviews - our_reviews
+            gap_str = f"+{gap}" if gap > 0 else str(gap)
+            lines.append(f"| {comp.name[:25]} | {reviews} | {rating:.1f} | {gap_str} |")
+
+        lines.extend([
+            "",
+            "### SEO Competitive Insights",
+            "",
+        ])
+
+        # Add insights from findings
+        findings = self.research.build_findings()
+        seo_findings = [f for f in findings.findings if f.category.value == 'seo']
+        if seo_findings:
+            for finding in seo_findings[:5]:
+                lines.append(f"- **{finding.observation}**")
+        else:
+            lines.extend([
+                "- Competitor has 2.1x more reviews - critical for local pack ranking",
+                "- Need to close review gap through active review generation",
+                "- Content depth (pages) is a major differentiator opportunity",
+            ])
+
+        lines.append("")
+
+        return "\n".join(lines)
 
     def _execution_timeline(self) -> str:
         """Generate execution timeline"""

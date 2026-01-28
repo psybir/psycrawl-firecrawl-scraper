@@ -134,9 +134,52 @@ class Config:
     IMAGE_OCR_ENABLED = os.getenv('IMAGE_OCR_ENABLED', 'false').lower() == 'true'
     MAX_MEDIA_SIZE_MB = int(os.getenv('MAX_MEDIA_SIZE_MB', '50'))
 
-    # ========== LLM Extraction Configuration (NEW) ==========
-    LLM_EXTRACTION_MODEL = os.getenv('LLM_EXTRACTION_MODEL', 'gpt-4o-mini')
-    LLM_MAX_TOKENS = int(os.getenv('LLM_MAX_TOKENS', '4096'))
+    # ========== LLM Extraction Configuration (Spark 1 Pro - Quality First) ==========
+    # IMPORTANT: Always use Spark 1 Pro for maximum extraction quality
+    # Available models: spark-1 (fast), spark-1-pro (quality), gpt-4o-mini
+    LLM_EXTRACTION_MODEL = os.getenv('LLM_EXTRACTION_MODEL', 'spark-1-pro')
+    LLM_MAX_TOKENS = int(os.getenv('LLM_MAX_TOKENS', '8192'))
+
+    # Spark 1 Pro Configuration
+    FIRECRAWL_LLM_MODEL = os.getenv('FIRECRAWL_LLM_MODEL', 'spark-1-pro')  # Always Pro
+    SPARK_PRO_ENABLED = os.getenv('SPARK_PRO_ENABLED', 'true').lower() == 'true'
+
+    # v2.7 Features Configuration
+    FAST_MAPPING_ENABLED = os.getenv('FAST_MAPPING_ENABLED', 'true').lower() == 'true'  # 15x faster
+    FAST_MAPPING_LIMIT = int(os.getenv('FAST_MAPPING_LIMIT', '100000'))  # 100k URL limit
+    YOUTUBE_TRANSCRIPT_ENABLED = os.getenv('YOUTUBE_TRANSCRIPT_ENABLED', 'true').lower() == 'true'
+    EXCEL_SCRAPING_ENABLED = os.getenv('EXCEL_SCRAPING_ENABLED', 'true').lower() == 'true'
+
+    # Lead Generation Configuration
+    LEAD_GEN_ENABLED = os.getenv('LEAD_GEN_ENABLED', 'true').lower() == 'true'
+    LEAD_EXTRACTION_MODEL = os.getenv('LEAD_EXTRACTION_MODEL', 'spark-1-pro')  # Always Pro for leads
+    LEAD_OUTPUT_DIR = Path(os.getenv('LEAD_OUTPUT_DIR', OUTPUT_DIR / 'leads')).resolve()
+
+    # Credit Usage Strategy (burn those 93.5k credits!)
+    CREDITS_MONTHLY_LIMIT = int(os.getenv('CREDITS_MONTHLY_LIMIT', '100000'))
+    CREDITS_USED = int(os.getenv('CREDITS_USED', '6500'))
+    CREDITS_AVAILABLE = CREDITS_MONTHLY_LIMIT - CREDITS_USED  # ~93,500
+    DAILY_CREDIT_TARGET = int(os.getenv('DAILY_CREDIT_TARGET', '3100'))  # Use 93.5k in 30 days
+
+    # ========== Skills System Configuration (Psybir Evidence Engine) ==========
+    SKILLS_ENABLED = os.getenv('SKILLS_ENABLED', 'true').lower() == 'true'
+    SKILLS_DIR = Path(os.getenv('SKILLS_DIR', Path(__file__).parent / 'skills')).resolve()
+    SKILLS_CONTEXT_FILE = Path(os.getenv('SKILLS_CONTEXT_FILE', '.psycrawl/product-context.md'))
+    SKILLS_DATA_DIR = Path(os.getenv('SKILLS_DATA_DIR', '.psycrawl/data'))
+    SKILLS_OUTPUT_DIR = Path(os.getenv('SKILLS_OUTPUT_DIR', OUTPUT_DIR / 'skills')).resolve()
+
+    # Psybir Geo-Tagging Defaults
+    DEFAULT_GEO_SCOPE = os.getenv('DEFAULT_GEO_SCOPE', 'local_radius')  # local_radius | multi_location | domestic
+    DEFAULT_GEO_BUCKET = os.getenv('DEFAULT_GEO_BUCKET', '0-10')  # 0-10 | 10-30 | 30-60 | 60-90 | 90+
+    DEFAULT_LOCATION_CLUSTER = os.getenv('DEFAULT_LOCATION_CLUSTER', '')  # e.g., "Pittsburgh Metro"
+
+    # Skills Caching
+    SKILLS_CACHE_ENABLED = os.getenv('SKILLS_CACHE_ENABLED', 'true').lower() == 'true'
+    SKILLS_CACHE_MAX_AGE_DAYS = int(os.getenv('SKILLS_CACHE_MAX_AGE_DAYS', '7'))
+
+    # NL Routing
+    SKILLS_NL_ROUTING_ENABLED = os.getenv('SKILLS_NL_ROUTING_ENABLED', 'true').lower() == 'true'
+    SKILLS_MIN_CONFIDENCE = float(os.getenv('SKILLS_MIN_CONFIDENCE', '0.3'))  # Minimum routing confidence
 
     # ========== DataForSEO Configuration (NEW) ==========
     DATAFORSEO_LOGIN = os.getenv('DATAFORSEO_LOGIN')
@@ -170,12 +213,14 @@ class Config:
     def ensure_directories(cls):
         """
         Ensure all required directories exist.
-        Creates OUTPUT_DIR, CHECKPOINT_DIR, CHANGE_TRACKING_DIR, and SEO_OUTPUT_DIR if they don't exist.
+        Creates OUTPUT_DIR, CHECKPOINT_DIR, CHANGE_TRACKING_DIR, SEO_OUTPUT_DIR, LEAD_OUTPUT_DIR, and SKILLS_OUTPUT_DIR if they don't exist.
         """
         cls.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         cls.CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
         cls.CHANGE_TRACKING_DIR.mkdir(parents=True, exist_ok=True)
         cls.SEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        cls.LEAD_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        cls.SKILLS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     @classmethod
     def get_output_path(cls, category: str) -> Path:
@@ -276,6 +321,35 @@ class Config:
         print(f"SEO Default Location: {cls.SEO_DEFAULT_LOCATION} ({cls.SEO_DEFAULT_LOCATION_CODE})")
         print(f"SEO Default Language: {cls.SEO_DEFAULT_LANGUAGE}")
         print(f"SEO Output Directory: {cls.SEO_OUTPUT_DIR}")
+        print("-" * 60)
+        print("Spark 1 Pro Settings:")
+        print(f"LLM Model: {cls.FIRECRAWL_LLM_MODEL}")
+        print(f"Spark Pro Enabled: {cls.SPARK_PRO_ENABLED}")
+        print(f"Fast Mapping (15x): {cls.FAST_MAPPING_ENABLED}")
+        print(f"Fast Mapping Limit: {cls.FAST_MAPPING_LIMIT:,} URLs")
+        print(f"YouTube Transcripts: {cls.YOUTUBE_TRANSCRIPT_ENABLED}")
+        print(f"Excel Scraping: {cls.EXCEL_SCRAPING_ENABLED}")
+        print("-" * 60)
+        print("Lead Generation Settings:")
+        print(f"Lead Gen Enabled: {cls.LEAD_GEN_ENABLED}")
+        print(f"Lead Extraction Model: {cls.LEAD_EXTRACTION_MODEL}")
+        print(f"Lead Output Dir: {cls.LEAD_OUTPUT_DIR}")
+        print("-" * 60)
+        print("Credit Usage Strategy:")
+        print(f"Monthly Limit: {cls.CREDITS_MONTHLY_LIMIT:,}")
+        print(f"Credits Used: {cls.CREDITS_USED:,}")
+        print(f"Credits Available: {cls.CREDITS_AVAILABLE:,}")
+        print(f"Daily Target: {cls.DAILY_CREDIT_TARGET:,}")
+        print("-" * 60)
+        print("Skills System (Psybir Evidence Engine):")
+        print(f"Skills Enabled: {cls.SKILLS_ENABLED}")
+        print(f"Skills Directory: {cls.SKILLS_DIR}")
+        print(f"Skills Output: {cls.SKILLS_OUTPUT_DIR}")
+        print(f"Default Geo Scope: {cls.DEFAULT_GEO_SCOPE}")
+        print(f"Default Geo Bucket: {cls.DEFAULT_GEO_BUCKET}")
+        print(f"Default Location Cluster: {cls.DEFAULT_LOCATION_CLUSTER or '(not set)'}")
+        print(f"Cache Enabled: {cls.SKILLS_CACHE_ENABLED}")
+        print(f"NL Routing Enabled: {cls.SKILLS_NL_ROUTING_ENABLED}")
         print("="*60 + "\n")
 
     @classmethod
@@ -313,7 +387,34 @@ class Config:
             'seo_default_location': cls.SEO_DEFAULT_LOCATION,
             'seo_default_location_code': cls.SEO_DEFAULT_LOCATION_CODE,
             'seo_default_language': cls.SEO_DEFAULT_LANGUAGE,
-            'seo_output_dir': str(cls.SEO_OUTPUT_DIR)
+            'seo_output_dir': str(cls.SEO_OUTPUT_DIR),
+            # Spark 1 Pro settings
+            'firecrawl_llm_model': cls.FIRECRAWL_LLM_MODEL,
+            'spark_pro_enabled': cls.SPARK_PRO_ENABLED,
+            'fast_mapping_enabled': cls.FAST_MAPPING_ENABLED,
+            'fast_mapping_limit': cls.FAST_MAPPING_LIMIT,
+            'youtube_transcript_enabled': cls.YOUTUBE_TRANSCRIPT_ENABLED,
+            'excel_scraping_enabled': cls.EXCEL_SCRAPING_ENABLED,
+            # Lead generation
+            'lead_gen_enabled': cls.LEAD_GEN_ENABLED,
+            'lead_extraction_model': cls.LEAD_EXTRACTION_MODEL,
+            'lead_output_dir': str(cls.LEAD_OUTPUT_DIR),
+            # Credit tracking
+            'credits_monthly_limit': cls.CREDITS_MONTHLY_LIMIT,
+            'credits_used': cls.CREDITS_USED,
+            'credits_available': cls.CREDITS_AVAILABLE,
+            'daily_credit_target': cls.DAILY_CREDIT_TARGET,
+            # Skills system (Psybir Evidence Engine)
+            'skills_enabled': cls.SKILLS_ENABLED,
+            'skills_dir': str(cls.SKILLS_DIR),
+            'skills_output_dir': str(cls.SKILLS_OUTPUT_DIR),
+            'default_geo_scope': cls.DEFAULT_GEO_SCOPE,
+            'default_geo_bucket': cls.DEFAULT_GEO_BUCKET,
+            'default_location_cluster': cls.DEFAULT_LOCATION_CLUSTER,
+            'skills_cache_enabled': cls.SKILLS_CACHE_ENABLED,
+            'skills_cache_max_age_days': cls.SKILLS_CACHE_MAX_AGE_DAYS,
+            'skills_nl_routing_enabled': cls.SKILLS_NL_ROUTING_ENABLED,
+            'skills_min_confidence': cls.SKILLS_MIN_CONFIDENCE,
         }
 
 

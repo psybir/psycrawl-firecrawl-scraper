@@ -3,10 +3,12 @@ Implementation Spec Generator - Technical build instructions
 
 Generates detailed technical specifications for builder agents
 and development teams.
+
+Enhanced with research integration for conversion optimization insights.
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 
 from ..models import (
     Client,
@@ -21,6 +23,9 @@ from ..models import (
     HEALTHCARE_VERTICALS,
 )
 
+if TYPE_CHECKING:
+    from ..integrations.research_integration import ResearchIntegration
+
 
 class ImplementationSpecGenerator:
     """Generate implementation specification markdown"""
@@ -30,12 +35,14 @@ class ImplementationSpecGenerator:
         client: Client,
         output_spec: Optional[OutputSpec] = None,
         matrix: Optional[IntentGeoMatrix] = None,
-        insights: Optional[InsightReport] = None
+        insights: Optional[InsightReport] = None,
+        research_integration: Optional['ResearchIntegration'] = None,
     ):
         self.client = client
         self.output_spec = output_spec
         self.matrix = matrix
         self.insights = insights
+        self.research = research_integration
 
     def generate(self) -> str:
         """Generate complete implementation spec markdown"""
@@ -44,13 +51,31 @@ class ImplementationSpecGenerator:
             self._tech_stack(),
             self._site_architecture(),
             self._page_map(),
+        ]
+
+        # Add research-based insights
+        if self.research:
+            priorities = self._implementation_priorities()
+            if priorities:
+                sections.append(priorities)
+
+        sections.extend([
             self._component_specs(),
             self._schema_requirements(),
             self._internal_linking(),
             self._conversion_elements(),
+        ])
+
+        # Add trust signals requirements from research
+        if self.research:
+            trust = self._trust_signal_requirements()
+            if trust:
+                sections.append(trust)
+
+        sections.extend([
             self._mobile_requirements(),
             self._deployment_checklist(),
-        ]
+        ])
 
         return "\n\n".join(sections)
 
@@ -530,6 +555,93 @@ class ImplementationSpecGenerator:
 - **FID:** < 100ms
 - **CLS:** < 0.1
 - **Mobile PageSpeed:** > 90"""
+
+    def _implementation_priorities(self) -> Optional[str]:
+        """Generate implementation priorities from research insights"""
+        if not self.research:
+            return None
+
+        insights = self.research.build_insights()
+        if not insights.insights:
+            return None
+
+        lines = [
+            "## Implementation Priorities (Research-Based)",
+            "",
+            "### Quick Wins (Implement First)",
+            "",
+        ]
+
+        # Quick wins (high impact, low effort)
+        quick_wins = [i for i in insights.insights
+                     if i.effort_estimate.value == 'low'
+                     and i.expected_impact.cvr_impact.value in ['high', 'medium']]
+        for win in quick_wins[:3]:
+            lines.append(f"- [ ] **{win.problem[:50]}**")
+            lines.append(f"      Action: {win.spec_change[:100]}...")
+            lines.append("")
+
+        # Strategic (high effort, high impact)
+        strategic = [i for i in insights.insights
+                    if i.effort_estimate.value in ['medium', 'high']
+                    and i.expected_impact.rank_impact.value == 'high']
+
+        if strategic:
+            lines.extend([
+                "### Strategic Priorities (Plan for Later)",
+                "",
+            ])
+            for strat in strategic[:3]:
+                lines.append(f"- [ ] **{strat.problem[:50]}**")
+                lines.append(f"      Action: {strat.spec_change[:100]}...")
+                lines.append("")
+
+        return "\n".join(lines)
+
+    def _trust_signal_requirements(self) -> Optional[str]:
+        """Generate trust signal requirements from research"""
+        if not self.research:
+            return None
+
+        gbp = self.research.research.gbp_profile
+        if not gbp:
+            return None
+
+        lines = [
+            "## Trust Signal Requirements",
+            "",
+            "### Must-Have Trust Elements",
+            "",
+            f"- [ ] Display rating: **{gbp.rating}** ({gbp.review_count} reviews)",
+            "- [ ] Google Reviews widget/integration",
+            "- [ ] Rating badges above fold on homepage",
+            "- [ ] Trust badges on booking/contact pages",
+            "",
+        ]
+
+        # Add moats as differentiator signals
+        moats = self.research.get_moat_identification()
+        if moats:
+            lines.extend([
+                "### Differentiator Messaging (Feature Prominently)",
+                "",
+            ])
+            for moat in moats[:4]:
+                lines.append(f"- [ ] {moat}")
+            lines.append("")
+
+        # Review sentiment highlights
+        if gbp.place_topics:
+            top_topics = sorted(gbp.place_topics.items(), key=lambda x: x[1], reverse=True)[:5]
+            lines.extend([
+                "### Review Topic Highlights (Use in Copy)",
+                "",
+            ])
+            for topic, count in top_topics:
+                lines.append(f"- **{topic}** ({count} mentions)")
+            lines.append("")
+
+        return "\n".join(lines)
 
     def _deployment_checklist(self) -> str:
         """Generate deployment checklist"""

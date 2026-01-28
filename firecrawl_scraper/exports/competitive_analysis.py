@@ -3,10 +3,13 @@ Competitive Analysis Generator - Detailed competitor breakdown
 
 Generates comprehensive competitor analysis for research agents
 and strategic planning.
+
+Enhanced with optional research integration for richer analysis
+including positioning maps, moat identification, and market gaps.
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
 from ..models import (
     Client,
@@ -14,7 +17,11 @@ from ..models import (
     FindingsReport,
     Finding,
     ThreatLevel,
+    InsightReport,
 )
+
+if TYPE_CHECKING:
+    from ..integrations.research_integration import ResearchIntegration
 
 
 class CompetitiveAnalysisGenerator:
@@ -24,24 +31,59 @@ class CompetitiveAnalysisGenerator:
         self,
         client: Client,
         competitors: List[CompetitorProfile],
-        findings: Optional[FindingsReport] = None
+        findings: Optional[FindingsReport] = None,
+        insights: Optional[InsightReport] = None,
+        research_integration: Optional['ResearchIntegration'] = None,
     ):
         self.client = client
         self.competitors = competitors or []
         self.findings = findings
+        self.insights = insights
+        self.research = research_integration
 
     def generate(self) -> str:
         """Generate complete competitive analysis markdown"""
         sections = [
             self._header(),
             self._executive_summary(),
+        ]
+
+        # Add research-enhanced sections if research integration available
+        if self.research:
+            positioning_map = self._competitive_positioning()
+            if positioning_map:
+                sections.append(positioning_map)
+
+        sections.extend([
             self._competitor_profiles(),
             self._comparative_analysis(),
             self._threat_assessment(),
+        ])
+
+        # Add research-enhanced sections
+        if self.research:
+            moats = self._moat_identification()
+            if moats:
+                sections.append(moats)
+
+            market_gaps = self._market_gaps_section()
+            if market_gaps:
+                sections.append(market_gaps)
+
+            seo_opps = self._seo_opportunities()
+            if seo_opps:
+                sections.append(seo_opps)
+
+        sections.extend([
             self._gap_analysis(),
             self._opportunities(),
-            self._recommendations(),
-        ]
+        ])
+
+        # Add insights section if available
+        if self.insights:
+            sections.append(self._actionable_insights())
+
+        sections.append(self._recommendations())
 
         return "\n\n".join(sections)
 
@@ -345,6 +387,151 @@ class CompetitiveAnalysisGenerator:
             lines.append("*Opportunity analysis requires competitor data.*")
 
         lines.append("")
+
+        return "\n".join(lines)
+
+    def _competitive_positioning(self) -> Optional[str]:
+        """Generate ASCII competitive positioning map from research"""
+        if not self.research:
+            return None
+
+        positioning_map = self.research.get_positioning_map()
+        if not positioning_map:
+            return None
+
+        lines = [
+            "## Competitive Positioning Map",
+            "",
+            "```",
+            positioning_map,
+            "```",
+            "",
+            f"**{self.client.name}'s defensible position:** Upper-right quadrant (Premium + Innovative)",
+            "",
+        ]
+
+        return "\n".join(lines)
+
+    def _moat_identification(self) -> Optional[str]:
+        """Generate competitive moats section from research"""
+        if not self.research:
+            return None
+
+        moats = self.research.get_moat_identification()
+        if not moats:
+            return None
+
+        lines = [
+            f"## {self.client.name} Competitive Moat",
+            "",
+            f"### What ONLY {self.client.name} Can Claim",
+            "",
+        ]
+
+        for i, moat in enumerate(moats, 1):
+            lines.append(f"{i}. **{moat}**")
+
+        lines.extend([
+            "",
+            "### Why Competitors Can't Match",
+            "",
+        ])
+
+        # Add brand differentiators if available
+        if self.client.brand and self.client.brand.differentiators:
+            lines.extend([
+                "| Feature | Us | Competitors |",
+                "|---------|-------|-------------|",
+            ])
+            for diff in self.client.brand.differentiators[:5]:
+                lines.append(f"| {diff[:40]} | Yes | No/Rarely |")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _market_gaps_section(self) -> Optional[str]:
+        """Generate market gaps section from research"""
+        if not self.research:
+            return None
+
+        market_gaps = self.research.get_market_gaps()
+        if not market_gaps:
+            return None
+
+        lines = [
+            "## Market Gaps & Opportunities",
+            "",
+            "### Underserved Segments",
+            "",
+        ]
+
+        for i, gap in enumerate(market_gaps[:6], 1):
+            lines.append(f"{i}. **{gap}**")
+
+        lines.append("")
+        return "\n".join(lines)
+
+    def _seo_opportunities(self) -> Optional[str]:
+        """Generate SEO opportunities section from research"""
+        if not self.research:
+            return None
+
+        seo_opps = self.research.get_seo_opportunities()
+        if not seo_opps:
+            return None
+
+        lines = [
+            "## SEO Opportunities",
+            "",
+        ]
+
+        # Primary keywords (currently ranking)
+        primary = [k for k in seo_opps if k.get('current_rank') and k.get('tier') == 'primary']
+        if primary:
+            lines.extend([
+                "### Primary Keywords (Currently Ranking)",
+                "",
+                "| Keyword | Current Rank | Top Ranker | Target |",
+                "|---------|--------------|------------|--------|",
+            ])
+            for kw in primary[:5]:
+                lines.append(f"| {kw['keyword']} | #{kw['current_rank']} | {kw.get('top_ranker', 'N/A')} | #1 |")
+            lines.append("")
+
+        # Keywords not ranking
+        missing = [k for k in seo_opps if not k.get('current_rank')]
+        if missing:
+            lines.extend([
+                "### Keywords Not Ranking (Opportunities)",
+                "",
+                "| Keyword | Opportunity |",
+                "|---------|-------------|",
+            ])
+            for kw in missing[:8]:
+                lines.append(f"| {kw['keyword']} | {kw.get('opportunity', 'Create targeted content')} |")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _actionable_insights(self) -> str:
+        """Generate actionable insights section"""
+        lines = [
+            "## Actionable Insights",
+            "",
+        ]
+
+        if self.insights and self.insights.insights:
+            for i, insight in enumerate(sorted(self.insights.insights, key=lambda x: x.priority_score, reverse=True)[:5], 1):
+                lines.extend([
+                    f"### {i}. {insight.problem[:60]}",
+                    "",
+                    f"**Priority:** {insight.priority_score}/100 | **Effort:** {insight.effort_estimate.value}",
+                    "",
+                    f"**Action:** {insight.spec_change[:200]}",
+                    "",
+                ])
+        else:
+            lines.append("*Insights will be generated after full pipeline analysis.*")
 
         return "\n".join(lines)
 
